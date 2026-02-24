@@ -97,9 +97,6 @@ jobs:
       # Build with test preset (includes ASAN + clang-tidy)
       - name: Build (test preset with clang-tidy)
         run: pixi run build -p test
-        env:
-          CCACHE_NODIRECT: false
-          CCACHE_CPP2: true
 
       # Run tests
       - name: Run Tests
