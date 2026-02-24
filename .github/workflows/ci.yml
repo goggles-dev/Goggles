@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   # ========================================================================
-  # Job 1: Format Check (fast feedback)
+  # PR Fast Path: Only format and build+test (~4 minutes)
   # ========================================================================
   format-check:
     name: Format Check
@@ -53,9 +53,6 @@ jobs:
             exit 1
           fi
 
-  # ========================================================================
-  # Job 2: Build and Test (ASAN only - fast with ccache)
-  # ========================================================================
   build-and-test:
     name: Build and Test
     runs-on: ubuntu-latest
@@ -86,7 +83,7 @@ jobs:
           pixi run ccache --set-config=compression=true
           pixi run ccache --zero-stats
 
-      # Build with asan preset (no clang-tidy for speed)
+      # Fast build with ASAN but no clang-tidy
       - name: Build (ASAN preset)
         run: pixi run build -p asan
 
@@ -98,11 +95,13 @@ jobs:
         run: pixi run ccache --show-stats
 
   # ========================================================================
-  # Job 3: Static Analysis (clang-tidy - slower but separate)
+  # Main Branch Only: Static analysis (slow, doesn't block PRs)
   # ========================================================================
   static-analysis:
     name: Static Analysis
     runs-on: ubuntu-latest
+    # Only run on main branch pushes, NOT on PRs
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
 
@@ -132,7 +131,6 @@ jobs:
           pixi run ccache --set-config=compression=true
           pixi run ccache --zero-stats
 
-      # Build with quality preset (includes clang-tidy)
       - name: Build with clang-tidy
         run: pixi run build -p quality
 
