@@ -11,8 +11,8 @@ permissions:
 
 env:
   PIXI_VERSION: v0.63.2
-  PIXI_ENV: lint
-  CCACHE_MAX_SIZE: 500M
+  CCACHE_MAX_SIZE: 2G
+  CCACHE_COMPRESS: true
 
 # Cancel in-progress runs when a new run is triggered for the same branch/PR
 concurrency:
@@ -20,38 +20,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ========================================================================
+  # Job 1: Format Check (runs in parallel with build)
+  # ========================================================================
   format-check:
     name: Format Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Pixi (attempt 1)
-        id: setup_pixi_format_1
-        continue-on-error: true
+      - name: Setup Pixi (with cache)
         uses: prefix-dev/setup-pixi@v0.9.3
         with:
           pixi-version: ${{ env.PIXI_VERSION }}
           cache: true
           manifest-path: pixi.toml
-          environments: ${{ env.PIXI_ENV }}
-          locked: true
-
-      - name: Setup Pixi (retry)
-        if: steps.setup_pixi_format_1.outcome == 'failure'
-        uses: prefix-dev/setup-pixi@v0.9.3
-        with:
-          pixi-version: ${{ env.PIXI_VERSION }}
-          cache: true
-          manifest-path: pixi.toml
-          environments: ${{ env.PIXI_ENV }}
+          environments: lint
           locked: true
 
       - name: Run clang-format
-        run: git ls-files -z '*.c' '*.h' '*.cpp' '*.hpp' | xargs -0 pixi run -e ${{ env.PIXI_ENV }} clang-format -i
+        run: git ls-files -z '*.c' '*.h' '*.cpp' '*.hpp' | xargs -0 pixi run -e lint clang-format -i
 
       - name: Run taplo (TOML format)
-        run: git ls-files -z '*.toml' | grep -zv 'test_data/' | xargs -0 pixi run -e ${{ env.PIXI_ENV }} taplo fmt
+        run: git ls-files -z '*.toml' | grep -zv 'test_data/' | xargs -0 pixi run -e lint taplo fmt
 
       - name: Check for formatting changes
         run: |
@@ -63,98 +54,109 @@ jobs:
             exit 1
           fi
 
-  build-and-test:
-    name: Build and Test (test preset)
+  # ========================================================================
+  # Job 2: Build + Test + Static Analysis (merged into single job)
+  # ========================================================================
+  build-test-analyze:
+    name: Build, Test & Static Analysis
     runs-on: ubuntu-latest
-    needs: format-check
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Setup Pixi (attempt 1)
-        id: setup_pixi_build_1
-        continue-on-error: true
+      # Setup Pixi with all environments (faster than separate setups)
+      - name: Setup Pixi
         uses: prefix-dev/setup-pixi@v0.9.3
         with:
           pixi-version: ${{ env.PIXI_VERSION }}
           cache: true
           manifest-path: pixi.toml
+          locked: true
 
-      - name: Setup Pixi (retry)
-        if: steps.setup_pixi_build_1.outcome == 'failure'
-        uses: prefix-dev/setup-pixi@v0.9.3
-        with:
-          pixi-version: ${{ env.PIXI_VERSION }}
-          cache: true
-          manifest-path: pixi.toml
-
+      # Optimized ccache setup with hendrikmuhs/ccache-action
       - name: Setup ccache
-        uses: actions/cache@v4
+        uses: hendrikmuhs/ccache-action@v1.2
         with:
-          path: ~/.ccache
-          key: ${{ runner.os }}-pixi-ccache-${{ github.sha }}
+          key: ${{ runner.os }}-ccache-${{ github.ref_name }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-pixi-ccache-
+            ${{ runner.os }}-ccache-${{ github.ref_name }}-
+            ${{ runner.os }}-ccache-main-
+            ${{ runner.os }}-ccache-
+          max-size: ${{ env.CCACHE_MAX_SIZE }}
 
+      # Configure ccache for optimal performance
       - name: Configure ccache
         run: |
           pixi run ccache --set-config=max_size=${{ env.CCACHE_MAX_SIZE }}
           pixi run ccache --set-config=compression=true
+          pixi run ccache --set-config=compression_level=6
+          pixi run ccache --set-config=sloppiness=pch_defines,time_macros,include_file_mtime,include_file_ctime
           pixi run ccache --zero-stats
 
-      - name: Build (test preset)
+      # Build with test preset (includes ASAN + clang-tidy)
+      - name: Build (test preset with clang-tidy)
         run: pixi run build -p test
+        env:
+          CCACHE_NODIRECT: false
+          CCACHE_CPP2: true
 
-      - name: Run Tests (test preset)
+      # Run tests
+      - name: Run Tests
         run: pixi run test -p test
 
+      # Show ccache stats for debugging
       - name: Show ccache statistics
         if: always()
         run: pixi run ccache --show-stats
 
-  static-analysis:
-    name: Static Analysis (clang-tidy)
+      # Upload build artifacts for potential debugging
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ github.run_id }}
+          path: build/test/Testing/
+          retention-days: 7
+
+  # ========================================================================
+  # Job 3: Quick Build Verification (fast sanity check)
+  # ========================================================================
+  quick-build:
+    name: Quick Build Check
     runs-on: ubuntu-latest
-    needs: format-check
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Setup Pixi (attempt 1)
-        id: setup_pixi_tidy_1
-        continue-on-error: true
+      - name: Setup Pixi
         uses: prefix-dev/setup-pixi@v0.9.3
         with:
           pixi-version: ${{ env.PIXI_VERSION }}
           cache: true
           manifest-path: pixi.toml
-
-      - name: Setup Pixi (retry)
-        if: steps.setup_pixi_tidy_1.outcome == 'failure'
-        uses: prefix-dev/setup-pixi@v0.9.3
-        with:
-          pixi-version: ${{ env.PIXI_VERSION }}
-          cache: true
-          manifest-path: pixi.toml
+          locked: true
 
       - name: Setup ccache
-        uses: actions/cache@v4
+        uses: hendrikmuhs/ccache-action@v1.2
         with:
-          path: ~/.ccache
-          key: ${{ runner.os }}-pixi-ccache-tidy-${{ github.sha }}
+          key: ${{ runner.os }}-ccache-quick-${{ github.ref_name }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-pixi-ccache-tidy-
+            ${{ runner.os }}-ccache-quick-${{ github.ref_name }}-
+            ${{ runner.os }}-ccache-quick-main-
+            ${{ runner.os }}-ccache-quick-
+            ${{ runner.os }}-ccache-main-
+            ${{ runner.os }}-ccache-
+          max-size: 500M
 
       - name: Configure ccache
         run: |
-          pixi run ccache --set-config=max_size=${{ env.CCACHE_MAX_SIZE }}
+          pixi run ccache --set-config=max_size=500M
           pixi run ccache --set-config=compression=true
           pixi run ccache --zero-stats
 
-      - name: Build with clang-tidy (quality preset)
-        run: pixi run build -p quality
+      # Quick debug build to verify compilation works
+      - name: Quick Debug Build
+        run: pixi run build -p debug
 
       - name: Show ccache statistics
         if: always()
