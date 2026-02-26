@@ -1,0 +1,7 @@
+---
+# Generated Wayland protocol headers - suppress all checks.
+# These files are produced by wayland-scanner and must not be modified.
+InheritParentConfig: false
+Checks: "-*"
+WarningsAsErrors: ""
+...
