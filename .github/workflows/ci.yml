@@ -95,8 +95,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Setup Pixi
         uses: prefix-dev/setup-pixi@v0.9.3
@@ -124,25 +122,10 @@ jobs:
           pixi run ccache --set-config=compression=true
           pixi run ccache --zero-stats
 
-      # Only run clang-tidy on changed files for PRs, full scan on main
-      - name: Run clang-tidy on changed files (PR only)
-        if: github.event_name == 'pull_request'
-        run: |
-          # Get list of changed .cpp files (headers are analyzed transitively via their TU)
-          changed_files=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(cpp|cc)$' || true)
-          if [ -n "$changed_files" ]; then
-            echo "Running clang-tidy on changed files:"
-            echo "$changed_files"
-            # Build compile_commands first
-            pixi run cmake --preset quality
-            # Run clang-tidy only on changed files
-            echo "$changed_files" | xargs -I {} pixi run clang-tidy -p build/quality {}
-          else
-            echo "No C++ files changed, skipping clang-tidy"
-          fi
-
-      - name: Build with clang-tidy (full scan on main)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      # Use CMake-integrated clang-tidy (CXX_CLANG_TIDY) for both PR and main.
+      # This ensures CI uses identical flags and header-filter as local builds,
+      # and generated headers (wayland protocols) exist before analysis runs.
+      - name: Build with clang-tidy
         run: pixi run build -p quality
 
       - name: Show ccache statistics
