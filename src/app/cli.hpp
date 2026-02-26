@@ -15,14 +15,8 @@ struct CliOptions {
     std::string shader_preset;
     std::string gpu_selector;
     bool detach = false;
-    bool wsi_proxy = false;
     uint32_t app_width = 0;
     uint32_t app_height = 0;
-    std::string dump_dir;
-    std::string dump_frame_range;
-    std::string dump_frame_mode;
-    bool layer_log = false;
-    std::string layer_log_level;
     std::optional<uint32_t> target_fps;
     std::vector<std::string> app_command;
 };

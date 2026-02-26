@@ -14,9 +14,6 @@ namespace goggles::input {
 /// @brief Identifies input events queued for dispatch on the compositor thread.
 enum class InputEventType : std::uint8_t { key, pointer_motion, pointer_button, pointer_axis };
 
-/// @brief Capture path used to source a surface.
-enum class SurfaceCapturePath : std::uint8_t { vulkan, compositor };
-
 /// @brief Metadata for a connected surface.
 struct SurfaceInfo {
     uint32_t id;
@@ -26,7 +23,6 @@ struct SurfaceInfo {
     int height;
     bool is_xwayland;
     bool is_input_target;
-    SurfaceCapturePath capture_path = SurfaceCapturePath::compositor;
     bool filter_chain_enabled = false;
 };
 

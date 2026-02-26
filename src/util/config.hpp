@@ -47,10 +47,6 @@ struct Config {
         std::string runtime_dir;
     } paths;
 
-    struct Capture {
-        std::string backend = "vulkan_layer";
-    } capture;
-
     struct Shader {
         std::string preset;
     } shader;
@@ -62,6 +58,7 @@ struct Config {
         ScaleMode scale_mode = ScaleMode::fill;
         uint32_t integer_scale = 0;
         std::string gpu_selector;
+        // Injected from CLI --app-width/--app-height; not parsed from TOML.
         uint32_t source_width = 0;
         uint32_t source_height = 0;
     } render;

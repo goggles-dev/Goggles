@@ -6,7 +6,7 @@
 # ============================================================================
 
 # ============================================================================
-# Profiling Dependencies (loaded early for layer-only builds)
+# Profiling Dependencies
 # ============================================================================
 
 if(ENABLE_PROFILING)
@@ -17,12 +17,6 @@ if(ENABLE_PROFILING)
     if(TARGET Tracy::TracyClient)
         set_target_properties(Tracy::TracyClient PROPERTIES POSITION_INDEPENDENT_CODE ON)
     endif()
-endif()
-
-# Layer-only builds skip most dependencies
-if(GOGGLES_LAYER_ONLY)
-    find_package(Vulkan REQUIRED)
-    return()
 endif()
 
 # ============================================================================
