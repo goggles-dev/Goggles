@@ -1357,7 +1357,10 @@ auto VulkanBackend::submit_and_present(uint32_t image_index, util::UniqueFd sync
         m_needs_resize = true;
     } else if (present_result != vk::Result::eSuccess) {
         if (have_acquire_sync) {
-            m_device.destroySemaphore(acquire_sync_sem);
+            if (frame.pending_acquire_sync_sem) {
+                m_device.destroySemaphore(frame.pending_acquire_sync_sem);
+            }
+            frame.pending_acquire_sync_sem = acquire_sync_sem;
         }
         return make_error<void>(ErrorCode::vulkan_device_lost,
                                 "Present failed: " + vk::to_string(present_result));
@@ -1365,6 +1368,9 @@ auto VulkanBackend::submit_and_present(uint32_t image_index, util::UniqueFd sync
 
     // Defer semaphore destruction until the in-flight fence signals
     if (have_acquire_sync) {
+        if (frame.pending_acquire_sync_sem) {
+            m_device.destroySemaphore(frame.pending_acquire_sync_sem);
+        }
         frame.pending_acquire_sync_sem = acquire_sync_sem;
     }
 

@@ -6,9 +6,9 @@ Explains how Goggles forwards input (keyboard, mouse) from the viewer window to 
 
 ## Problem
 
-When capturing frames from a Vulkan application via the layer, the app typically runs headless (no visible window). Users want to control the captured app by pressing keys in the Goggles viewer window, but standard input methods don't work because:
+When running a target application inside the nested compositor, the app renders to a virtual display. Users want to control the target app by pressing keys in the Goggles viewer window, but standard input methods don't work because:
 
-1. The captured app is on a different display server
+1. The target app is connected to the nested compositor's display server, not the host
 2. X11/Wayland don't forward events between unrelated windows
 3. Synthetic events (XTest, uinput) are filtered by many applications (especially Wine)
 

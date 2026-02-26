@@ -49,24 +49,6 @@ TEST_CASE("parse_cli: detach mode rejects app width/height", "[cli]") {
     REQUIRE(result.error().code == ErrorCode::parse_error);
 }
 
-TEST_CASE("parse_cli: detach mode rejects dump options", "[cli]") {
-    auto cfg = default_config_path();
-    ArgvBuilder args({"goggles", "--config", cfg, "--detach", "--dump-frame-range", "3"});
-
-    auto result = goggles::app::parse_cli(args.argc(), args.argv.data());
-    REQUIRE(!result);
-    REQUIRE(result.error().code == ErrorCode::parse_error);
-}
-
-TEST_CASE("parse_cli: detach mode rejects vk-layer logging options", "[cli]") {
-    auto cfg = default_config_path();
-    ArgvBuilder args({"goggles", "--config", cfg, "--detach", "--layer-log"});
-
-    auto result = goggles::app::parse_cli(args.argc(), args.argv.data());
-    REQUIRE(!result);
-    REQUIRE(result.error().code == ErrorCode::parse_error);
-}
-
 TEST_CASE("parse_cli: default mode requires app command after --", "[cli]") {
     auto cfg = default_config_path();
     ArgvBuilder args({"goggles", "--config", cfg});
@@ -97,32 +79,6 @@ TEST_CASE("parse_cli: default mode parses app command and args", "[cli]") {
     REQUIRE(result->options.app_command[0] == "vkcube");
     REQUIRE(result->options.app_command[1] == "--wsi");
     REQUIRE(result->options.app_command[2] == "xcb");
-}
-
-TEST_CASE("parse_cli: default mode parses dump options", "[cli]") {
-    auto cfg = default_config_path();
-    ArgvBuilder args({"goggles", "--config", cfg, "--dump-dir", "/tmp/goggles_dump",
-                      "--dump-frame-range", "3,5,8-13", "--dump-frame-mode", "ppm", "--",
-                      "vkcube"});
-
-    auto result = goggles::app::parse_cli(args.argc(), args.argv.data());
-    REQUIRE(result);
-    REQUIRE(result->action == goggles::app::CliAction::run);
-    REQUIRE(!result->options.detach);
-    REQUIRE(result->options.dump_dir == "/tmp/goggles_dump");
-    REQUIRE(result->options.dump_frame_range == "3,5,8-13");
-    REQUIRE(result->options.dump_frame_mode == "ppm");
-}
-
-TEST_CASE("parse_cli: default mode parses vk-layer logging options", "[cli]") {
-    auto cfg = default_config_path();
-    ArgvBuilder args({"goggles", "--config", cfg, "--layer-log-level", "debug", "--", "vkcube"});
-
-    auto result = goggles::app::parse_cli(args.argc(), args.argv.data());
-    REQUIRE(result);
-    REQUIRE(result->action == goggles::app::CliAction::run);
-    REQUIRE(result->options.layer_log);
-    REQUIRE(result->options.layer_log_level == "debug");
 }
 
 TEST_CASE("parse_cli: default mode parses gpu selector", "[cli]") {

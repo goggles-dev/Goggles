@@ -46,10 +46,8 @@ static auto get_reaper_path() -> std::string {
 
 static auto spawn_target_app(const std::vector<std::string>& command,
                              const std::string& x11_display, const std::string& wayland_display,
-                             uint32_t app_width, uint32_t app_height, const std::string& gpu_uuid,
-                             const std::string& dump_dir, const std::string& dump_frame_range,
-                             const std::string& dump_frame_mode, bool layer_log,
-                             const std::string& layer_log_level) -> goggles::Result<pid_t> {
+                             uint32_t app_width, uint32_t app_height, const std::string& gpu_uuid)
+    -> goggles::Result<pid_t> {
     GOGGLES_PROFILE_FUNCTION();
     if (command.empty()) {
         return goggles::make_error<pid_t>(goggles::ErrorCode::invalid_config,
@@ -63,34 +61,14 @@ static auto spawn_target_app(const std::vector<std::string>& command,
 
     auto is_override_key = [](std::string_view key) -> bool {
         return key == "DISPLAY" || key == "WAYLAND_DISPLAY" || key == "GOGGLES_WIDTH" ||
-               key == "GOGGLES_HEIGHT" || key == "GOGGLES_GPU_UUID" || key == "GOGGLES_DUMP_DIR" ||
-               key == "GOGGLES_DUMP_FRAME_RANGE" || key == "GOGGLES_DUMP_FRAME_MODE" ||
-               key == "GOGGLES_DEBUG_LOG" || key == "GOGGLES_DEBUG_LOG_LEVEL" ||
-               key == "TRACY_PORT";
+               key == "GOGGLES_HEIGHT" || key == "GOGGLES_GPU_UUID" || key == "TRACY_PORT";
     };
 
     std::vector<std::string> env_overrides;
-    env_overrides.reserve(12);
+    env_overrides.reserve(7);
     env_overrides.emplace_back("DISPLAY=" + x11_display);
     env_overrides.emplace_back("WAYLAND_DISPLAY=" + wayland_display);
     env_overrides.emplace_back("GOGGLES_GPU_UUID=" + gpu_uuid);
-
-    if (!dump_dir.empty()) {
-        env_overrides.emplace_back("GOGGLES_DUMP_DIR=" + dump_dir);
-    }
-    if (!dump_frame_range.empty()) {
-        env_overrides.emplace_back("GOGGLES_DUMP_FRAME_RANGE=" + dump_frame_range);
-    }
-    if (!dump_frame_mode.empty()) {
-        env_overrides.emplace_back("GOGGLES_DUMP_FRAME_MODE=" + dump_frame_mode);
-    }
-
-    if (layer_log) {
-        env_overrides.emplace_back("GOGGLES_DEBUG_LOG=1");
-    }
-    if (!layer_log_level.empty()) {
-        env_overrides.emplace_back("GOGGLES_DEBUG_LOG_LEVEL=" + layer_log_level);
-    }
 
     if (app_width != 0 && app_height != 0) {
         env_overrides.emplace_back("GOGGLES_WIDTH=" + std::to_string(app_width));
@@ -457,10 +435,9 @@ static auto run_app(int argc, char** argv) -> int {
             const auto x11_display = app->x11_display();
             const auto wayland_display = app->wayland_display();
 
-            auto spawn_result = spawn_target_app(
-                cli_opts.app_command, x11_display, wayland_display, cli_opts.app_width,
-                cli_opts.app_height, app->gpu_uuid(), cli_opts.dump_dir, cli_opts.dump_frame_range,
-                cli_opts.dump_frame_mode, cli_opts.layer_log, cli_opts.layer_log_level);
+            auto spawn_result =
+                spawn_target_app(cli_opts.app_command, x11_display, wayland_display,
+                                 cli_opts.app_width, cli_opts.app_height, app->gpu_uuid());
             if (!spawn_result) {
                 GOGGLES_LOG_CRITICAL("Failed to launch target app: {} ({})",
                                      spawn_result.error().message,

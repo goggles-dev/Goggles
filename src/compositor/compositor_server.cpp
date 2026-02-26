@@ -1308,7 +1308,6 @@ auto CompositorServer::get_presented_frame(uint64_t after_frame_number) const
     frame.image.offset = stored.image.offset;
     frame.image.format = stored.image.format;
     frame.image.modifier = stored.image.modifier;
-    frame.image.handle_type = stored.image.handle_type;
     frame.frame_number = stored.frame_number;
     frame.image.handle = stored.image.handle.dup();
     if (!frame.image.handle) {
@@ -1316,7 +1315,6 @@ auto CompositorServer::get_presented_frame(uint64_t after_frame_number) const
     }
     if (stored.sync_fd.valid()) {
         frame.sync_fd = stored.sync_fd.dup();
-        frame.sync_point = stored.sync_point;
     }
     return frame;
 }
@@ -3128,7 +3126,6 @@ bool CompositorServer::Impl::render_surface_to_frame(const InputTarget& target) 
     frame.image.format = util::drm_to_vk_format(attribs.format);
     frame.image.modifier = attribs.modifier;
     frame.image.handle = std::move(dup_fd);
-    frame.image.handle_type = util::ExternalHandleType::dmabuf;
     frame.frame_number = ++presented_frame_number;
 
     // Extract explicit sync acquire fence if the client uses syncobj
@@ -3139,7 +3136,6 @@ bool CompositorServer::Impl::render_surface_to_frame(const InputTarget& target) 
                                                                   syncobj_state->acquire_point);
         if (sync_file >= 0) {
             frame.sync_fd = util::UniqueFd{sync_file};
-            frame.sync_point = syncobj_state->acquire_point;
         }
     }
 
@@ -3380,7 +3376,6 @@ auto CompositorServer::get_surfaces() const -> std::vector<SurfaceInfo> {
         info.height = hooks->xsurface->height;
         info.is_xwayland = true;
         info.is_input_target = (info.id == target_id);
-        info.capture_path = SurfaceCapturePath::compositor;
         result.push_back(std::move(info));
     }
 
@@ -3396,7 +3391,6 @@ auto CompositorServer::get_surfaces() const -> std::vector<SurfaceInfo> {
         info.height = hooks->toplevel->current.height;
         info.is_xwayland = false;
         info.is_input_target = (info.id == target_id);
-        info.capture_path = SurfaceCapturePath::compositor;
         result.push_back(std::move(info));
     }
 

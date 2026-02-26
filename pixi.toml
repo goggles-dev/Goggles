@@ -30,7 +30,7 @@ cmd = "bash scripts/task/build.sh"
 depends-on = ["_check-init"]
 
 [tasks.build-all-presets]
-description = "Build all CMake presets (including i686)"
+description = "Build all CMake presets"
 cmd = "bash scripts/task/build-all-presets.sh"
 depends-on = ["_check-init"]
 

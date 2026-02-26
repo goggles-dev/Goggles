@@ -359,10 +359,7 @@ void Application::forward_input_event(const SDL_Event& event) {
 void Application::sync_prechain_ui() {
     auto& prechain = m_imgui_layer->state().prechain;
     if (prechain.target_width == 0 && prechain.target_height == 0) {
-        vk::Extent2D initial_resolution{};
-        if (initial_resolution.width == 0 || initial_resolution.height == 0) {
-            initial_resolution = m_vulkan_backend->get_captured_extent();
-        }
+        const auto initial_resolution = m_vulkan_backend->get_captured_extent();
         if (initial_resolution.width > 0 && initial_resolution.height > 0) {
             m_imgui_layer->set_prechain_state(initial_resolution,
                                               m_vulkan_backend->get_scale_mode(),
@@ -387,6 +384,7 @@ void Application::sync_surface_filters(std::vector<input::SurfaceInfo>& surfaces
     for (auto& surface : surfaces) {
         seen.insert(surface.id);
         auto it = m_surface_state.find(surface.id);
+        // New surfaces start unfiltered; user enables per-surface via UI overlay.
         const bool default_filter_enabled = false;
         if (it == m_surface_state.end()) {
             SurfaceRuntimeState state{};
@@ -439,13 +437,14 @@ auto Application::compute_surface_filter_chain_enabled(uint32_t surface_id) cons
     return is_surface_filter_enabled(surface_id);
 }
 
-auto Application::compute_stage_policy(bool using_surface_frame) const -> Application::StagePolicy {
+auto Application::compute_stage_policy() const -> Application::StagePolicy {
     const bool global_filter_enabled = compute_global_filter_chain_enabled();
-    bool surface_filter_enabled = true;
+    bool surface_filter_enabled = false;
     if (m_active_surface_id != 0) {
-        surface_filter_enabled = is_surface_filter_enabled(m_active_surface_id);
-    } else if (using_surface_frame || !m_surface_state.empty()) {
-        surface_filter_enabled = false;
+        auto it = m_surface_state.find(m_active_surface_id);
+        if (it != m_surface_state.end()) {
+            surface_filter_enabled = it->second.filter_enabled;
+        }
     }
     const bool prechain_enabled = global_filter_enabled && surface_filter_enabled;
 
@@ -466,7 +465,6 @@ void Application::set_surface_filter_enabled(uint32_t surface_id, bool enabled) 
         return;
     }
     it->second.filter_enabled = enabled;
-    it->second.filter_explicitly_set = true;
 }
 
 auto Application::is_surface_filter_enabled(uint32_t surface_id) const -> bool {
@@ -653,7 +651,7 @@ void Application::render_frame() {
         GOGGLES_PROFILE_VALUE("goggles_source_frame", static_cast<double>(source_frame_number));
     }
 
-    auto policy = compute_stage_policy(true);
+    auto policy = compute_stage_policy();
     m_vulkan_backend->set_filter_chain_policy(
         {.prechain_enabled = policy.prechain_enabled,
          .effect_stage_enabled = policy.effect_stage_enabled});

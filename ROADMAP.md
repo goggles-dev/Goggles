@@ -23,9 +23,9 @@ Minimize end-to-end latency while maintaining code quality
 - Queue submission overhead
 - CPU-GPU synchronization points
 
-## === Phase 1: Fundamental Infrastructure & IPC Level Streaming ===
+## === Phase 1: Fundamental Infrastructure & Compositor Frame Delivery ===
 
-This roadmap covers core infrastructure work focused on establishing robust frame capture, IPC streaming, and shader processing capabilities.
+This roadmap covers core infrastructure work focused on establishing robust compositor-based frame capture and shader processing capabilities.
 
 ---
 
@@ -42,7 +42,7 @@ Prevent regressions in filter chain when adding new features
 ### 2. Tracy Profiling Improvements
 
 - [ ] Add Tracy GPU profiling support (Vulkan)
-- [x] Multiple processes with single timeline profiling (capture layer + viewer app), [context](https://github.com/wolfpld/tracy/issues/822)
+- [x] Single-process Tracy timeline profiling, [context](https://github.com/wolfpld/tracy/issues/822)
 
 ### 3. Error Traceback Integration
 

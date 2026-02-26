@@ -24,7 +24,6 @@ enum class ErrorCode : std::uint8_t {
     shader_compile_failed,
     shader_load_failed,
     input_init_failed,
-    input_socket_send_failed,
     invalid_data,
     unknown_error
 };
@@ -92,8 +91,6 @@ make_result_ptr_error(ErrorCode code, std::string message,
         return "shader_load_failed";
     case ErrorCode::input_init_failed:
         return "input_init_failed";
-    case ErrorCode::input_socket_send_failed:
-        return "input_socket_send_failed";
     case ErrorCode::invalid_data:
         return "invalid_data";
     case ErrorCode::unknown_error:

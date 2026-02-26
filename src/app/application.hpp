@@ -79,7 +79,7 @@ private:
         bool prechain_enabled = true;
         bool effect_stage_enabled = true;
     };
-    [[nodiscard]] auto compute_stage_policy(bool using_surface_frame) const -> StagePolicy;
+    [[nodiscard]] auto compute_stage_policy() const -> StagePolicy;
     void request_surface_resize(uint32_t surface_id, bool maximize);
     void set_surface_filter_enabled(uint32_t surface_id, bool enabled);
     [[nodiscard]] auto is_surface_filter_enabled(uint32_t surface_id) const -> bool;
@@ -98,7 +98,6 @@ private:
     };
     struct SurfaceRuntimeState {
         bool filter_enabled = false;
-        bool filter_explicitly_set = false;
         SurfaceResizeState resize;
         bool has_resize_state = false;
         uint32_t restore_width = 0;
