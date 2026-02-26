@@ -49,6 +49,10 @@ extern "C" {
 #include <wlr/xwayland/xwayland.h>
 #undef class
 
+// wlr_layer_shell_v1.h contains 'char *namespace' which conflicts with C++ keyword
+#define namespace namespace_
+#include <wlr/types/wlr_layer_shell_v1.h>
+#undef namespace
 #include <wlr/types/wlr_xdg_shell.h>
 }
 
@@ -422,6 +426,7 @@ struct CompositorServer::Impl {
         bool mapped = false;
         bool override_redirect = false;
         wl_listener associate{};
+        wl_listener dissociate{};
         wl_listener map_request{};
         wl_listener commit{};
         wl_listener destroy{};
@@ -461,6 +466,24 @@ struct CompositorServer::Impl {
         wl_listener toplevel_destroy{};
     };
 
+    struct LayerSurfaceHooks {
+        Impl* impl = nullptr;
+        wlr_layer_surface_v1* layer_surface = nullptr;
+        wlr_surface* surface = nullptr;
+        uint32_t id = 0;
+        zwlr_layer_shell_v1_layer layer = ZWLR_LAYER_SHELL_V1_LAYER_TOP;
+        bool configured = false;
+        bool mapped = false;
+        bool destroyed = false;
+
+        wl_listener surface_commit{};
+        wl_listener surface_map{};
+        wl_listener surface_unmap{};
+        wl_listener surface_destroy{};
+        wl_listener layer_destroy{};
+        wl_listener new_popup{};
+    };
+
     struct Listeners {
         Impl* impl = nullptr;
 
@@ -468,6 +491,7 @@ struct CompositorServer::Impl {
         wl_listener new_xdg_popup{};
         wl_listener new_xwayland_surface{};
         wl_listener new_pointer_constraint{};
+        wl_listener new_layer_surface{};
     };
 
     struct ConstraintHooks {
@@ -533,6 +557,8 @@ struct CompositorServer::Impl {
     std::vector<XdgToplevelHooks*> xdg_hooks;
     std::vector<std::unique_ptr<XdgPopupHooks>> xdg_popup_hooks;
     std::vector<XWaylandSurfaceHooks*> xwayland_hooks;
+    std::vector<LayerSurfaceHooks*> layer_hooks;
+    wlr_layer_shell_v1* layer_shell = nullptr;
     wlr_drm_format present_format{};
     std::string wayland_socket_name;
     mutable std::mutex hooks_mutex;
@@ -556,6 +582,7 @@ struct CompositorServer::Impl {
         wl_list_init(&listeners.new_xdg_popup.link);
         wl_list_init(&listeners.new_xwayland_surface.link);
         wl_list_init(&listeners.new_pointer_constraint.link);
+        wl_list_init(&listeners.new_layer_surface.link);
     }
 
     [[nodiscard]] auto setup_base_components() -> Result<void>;
@@ -563,6 +590,7 @@ struct CompositorServer::Impl {
     [[nodiscard]] auto create_compositor() -> Result<void>;
     [[nodiscard]] auto create_output_layout() -> Result<void>;
     [[nodiscard]] auto setup_xdg_shell() -> Result<void>;
+    [[nodiscard]] auto setup_layer_shell() -> Result<void>;
     [[nodiscard]] auto setup_input_devices() -> Result<void>;
     [[nodiscard]] auto setup_event_loop_fd() -> Result<void>;
     [[nodiscard]] auto setup_xwayland() -> Result<void>;
@@ -599,6 +627,12 @@ struct CompositorServer::Impl {
     void handle_new_pointer_constraint(wlr_pointer_constraint_v1* constraint);
     void handle_constraint_set_region(ConstraintHooks* hooks);
     void handle_constraint_destroy(ConstraintHooks* hooks);
+    void handle_new_layer_surface(wlr_layer_surface_v1* layer_surface);
+    void handle_layer_surface_commit(LayerSurfaceHooks* hooks);
+    void handle_layer_surface_map(LayerSurfaceHooks* hooks);
+    void handle_layer_surface_unmap(LayerSurfaceHooks* hooks);
+    void handle_layer_surface_destroy(LayerSurfaceHooks* hooks);
+    void render_layer_surfaces(wlr_render_pass* pass, zwlr_layer_shell_v1_layer target_layer);
     void activate_constraint(wlr_pointer_constraint_v1* constraint);
     void deactivate_constraint();
     void focus_surface(wlr_surface* surface);
@@ -824,6 +858,23 @@ auto CompositorServer::Impl::setup_xdg_shell() -> Result<void> {
         list->impl->handle_new_xdg_popup(static_cast<wlr_xdg_popup*>(data));
     };
     wl_signal_add(&xdg_shell->events.new_popup, &listeners.new_xdg_popup);
+
+    return {};
+}
+
+auto CompositorServer::Impl::setup_layer_shell() -> Result<void> {
+    GOGGLES_PROFILE_FUNCTION();
+    layer_shell = wlr_layer_shell_v1_create(display, 4);
+    if (!layer_shell) {
+        return make_error<void>(ErrorCode::input_init_failed, "Failed to create layer-shell");
+    }
+
+    listeners.new_layer_surface.notify = [](wl_listener* listener, void* data) {
+        auto* list = reinterpret_cast<Impl::Listeners*>(
+            reinterpret_cast<char*>(listener) - offsetof(Impl::Listeners, new_layer_surface));
+        list->impl->handle_new_layer_surface(static_cast<wlr_layer_surface_v1*>(data));
+    };
+    wl_signal_add(&layer_shell->events.new_surface, &listeners.new_layer_surface);
 
     return {};
 }
@@ -1071,6 +1122,7 @@ auto CompositorServer::start() -> Result<void> {
     GOGGLES_TRY(impl.create_compositor());
     GOGGLES_TRY(impl.create_output_layout());
     GOGGLES_TRY(impl.setup_xdg_shell());
+    GOGGLES_TRY(impl.setup_layer_shell());
     GOGGLES_TRY(impl.setup_input_devices());
     GOGGLES_TRY(impl.setup_event_loop_fd());
 
@@ -1126,6 +1178,7 @@ void CompositorServer::stop() {
     detach_listener(impl.listeners.new_pointer_constraint);
     detach_listener(impl.listeners.new_xdg_popup);
     detach_listener(impl.listeners.new_xdg_toplevel);
+    detach_listener(impl.listeners.new_layer_surface);
 
     // Destruction order: xwayland before compositor, seat before display
     if (impl.xwayland) {
@@ -1148,6 +1201,7 @@ void CompositorServer::stop() {
     }
 
     impl.xdg_shell = nullptr;
+    impl.layer_shell = nullptr;
     impl.compositor = nullptr;
     impl.output = nullptr;
     if (impl.present_swapchain) {
@@ -1796,6 +1850,22 @@ void CompositorServer::Impl::handle_new_xwayland_surface(wlr_xwayland_surface* x
     };
     wl_signal_add(&xsurface->events.associate, &hooks->associate);
 
+    wl_list_init(&hooks->dissociate.link);
+    hooks->dissociate.notify = [](wl_listener* listener, void* /*data*/) {
+        auto* h = reinterpret_cast<XWaylandSurfaceHooks*>(
+            reinterpret_cast<char*>(listener) - offsetof(XWaylandSurfaceHooks, dissociate));
+        if (h->override_redirect && h->mapped) {
+            h->mapped = false;
+            h->impl->request_present_reset();
+        }
+        // Stale commit events after dissociation would dereference the now-invalid wlr_surface.
+        if (h->commit.link.next != nullptr && h->commit.link.next != &h->commit.link) {
+            wl_list_remove(&h->commit.link);
+            wl_list_init(&h->commit.link);
+        }
+    };
+    wl_signal_add(&xsurface->events.dissociate, &hooks->dissociate);
+
     hooks->map_request.notify = [](wl_listener* listener, void* /*data*/) {
         auto* h = reinterpret_cast<XWaylandSurfaceHooks*>(
             reinterpret_cast<char*>(listener) - offsetof(XWaylandSurfaceHooks, map_request));
@@ -1808,6 +1878,7 @@ void CompositorServer::Impl::handle_new_xwayland_surface(wlr_xwayland_surface* x
                                                           offsetof(XWaylandSurfaceHooks, destroy));
         h->impl->handle_xwayland_surface_destroy(h->xsurface);
         wl_list_remove(&h->associate.link);
+        wl_list_remove(&h->dissociate.link);
         wl_list_remove(&h->map_request.link);
         if (h->commit.link.next != nullptr && h->commit.link.next != &h->commit.link) {
             wl_list_remove(&h->commit.link);
@@ -1845,13 +1916,15 @@ void CompositorServer::Impl::handle_xwayland_surface_associate(wlr_xwayland_surf
     // It fires unexpectedly during normal operation, breaking X11 input entirely.
 
     // XWayland events can arrive out-of-order (map_request before associate).
-    if (hooks && hooks->map_requested && !hooks->mapped) {
-        hooks->mapped = true;
-
-        if (!hooks->override_redirect) {
-            focus_xwayland_surface(xsurface);
-        } else {
+    if (hooks && !hooks->mapped) {
+        if (hooks->override_redirect) {
+            // Override-redirect windows bypass the WM: events.map_request never fires
+            // for them (X11 sends MapNotify, not MapRequest). Treat association as mapped.
+            hooks->mapped = true;
             request_present_reset();
+        } else if (hooks->map_requested) {
+            hooks->mapped = true;
+            focus_xwayland_surface(xsurface);
         }
     }
 }
@@ -1893,7 +1966,11 @@ void CompositorServer::Impl::handle_xwayland_surface_commit(XWaylandSurfaceHooks
     wlr_surface_send_frame_done(hooks->xsurface->surface, &now);
 
     if (hooks->mapped) {
-        update_presented_frame(hooks->xsurface->surface);
+        if (hooks->override_redirect) {
+            request_present_reset();
+        } else {
+            update_presented_frame(hooks->xsurface->surface);
+        }
     }
 }
 
@@ -2030,6 +2107,253 @@ void CompositorServer::Impl::handle_constraint_destroy(ConstraintHooks* hooks) {
     wl_list_remove(&hooks->set_region.link);
     wl_list_remove(&hooks->destroy.link);
     delete hooks;
+}
+
+void CompositorServer::Impl::handle_new_layer_surface(wlr_layer_surface_v1* layer_surface) {
+    if (!layer_surface || !layer_surface->surface) {
+        return;
+    }
+
+    // The protocol requires the compositor to assign an output before the first commit
+    if (!layer_surface->output) {
+        layer_surface->output = output;
+    }
+
+    // Exception §6.1: wl_listener container_of recovery requires a stable allocation address;
+    // consistent with XdgToplevelHooks/XWaylandSurfaceHooks pattern. Track with hooks RAII
+    // migration.
+    auto* hooks = new LayerSurfaceHooks{};
+    hooks->impl = this;
+    hooks->layer_surface = layer_surface;
+    hooks->surface = layer_surface->surface;
+    hooks->id = next_surface_id++;
+    hooks->layer = static_cast<zwlr_layer_shell_v1_layer>(layer_surface->pending.layer);
+
+    {
+        std::scoped_lock lock(hooks_mutex);
+        layer_hooks.push_back(hooks);
+    }
+
+    wl_list_init(&hooks->surface_commit.link);
+    hooks->surface_commit.notify = [](wl_listener* listener, void* /*data*/) {
+        auto* h = reinterpret_cast<LayerSurfaceHooks*>(reinterpret_cast<char*>(listener) -
+                                                       offsetof(LayerSurfaceHooks, surface_commit));
+        h->impl->handle_layer_surface_commit(h);
+    };
+    wl_signal_add(&layer_surface->surface->events.commit, &hooks->surface_commit);
+
+    wl_list_init(&hooks->surface_map.link);
+    hooks->surface_map.notify = [](wl_listener* listener, void* /*data*/) {
+        auto* h = reinterpret_cast<LayerSurfaceHooks*>(reinterpret_cast<char*>(listener) -
+                                                       offsetof(LayerSurfaceHooks, surface_map));
+        h->impl->handle_layer_surface_map(h);
+    };
+    wl_signal_add(&layer_surface->surface->events.map, &hooks->surface_map);
+
+    wl_list_init(&hooks->surface_unmap.link);
+    hooks->surface_unmap.notify = [](wl_listener* listener, void* /*data*/) {
+        auto* h = reinterpret_cast<LayerSurfaceHooks*>(reinterpret_cast<char*>(listener) -
+                                                       offsetof(LayerSurfaceHooks, surface_unmap));
+        h->impl->handle_layer_surface_unmap(h);
+    };
+    wl_signal_add(&layer_surface->surface->events.unmap, &hooks->surface_unmap);
+
+    wl_list_init(&hooks->surface_destroy.link);
+    hooks->surface_destroy.notify = [](wl_listener* listener, void* /*data*/) {
+        auto* h = reinterpret_cast<LayerSurfaceHooks*>(
+            reinterpret_cast<char*>(listener) - offsetof(LayerSurfaceHooks, surface_destroy));
+        h->impl->handle_layer_surface_destroy(h);
+    };
+    wl_signal_add(&layer_surface->surface->events.destroy, &hooks->surface_destroy);
+
+    wl_list_init(&hooks->layer_destroy.link);
+    hooks->layer_destroy.notify = [](wl_listener* listener, void* /*data*/) {
+        auto* h = reinterpret_cast<LayerSurfaceHooks*>(reinterpret_cast<char*>(listener) -
+                                                       offsetof(LayerSurfaceHooks, layer_destroy));
+        h->impl->handle_layer_surface_destroy(h);
+    };
+    wl_signal_add(&layer_surface->events.destroy, &hooks->layer_destroy);
+
+    wl_list_init(&hooks->new_popup.link);
+    hooks->new_popup.notify = [](wl_listener* listener, void* data) {
+        auto* h = reinterpret_cast<LayerSurfaceHooks*>(reinterpret_cast<char*>(listener) -
+                                                       offsetof(LayerSurfaceHooks, new_popup));
+        h->impl->handle_new_xdg_popup(static_cast<wlr_xdg_popup*>(data));
+    };
+    wl_signal_add(&layer_surface->events.new_popup, &hooks->new_popup);
+
+    GOGGLES_LOG_DEBUG("New layer surface: id={} surface={} layer={}", hooks->id,
+                      static_cast<void*>(layer_surface->surface), static_cast<int>(hooks->layer));
+}
+
+void CompositorServer::Impl::handle_layer_surface_commit(LayerSurfaceHooks* hooks) {
+    if (!hooks->layer_surface || !hooks->surface) {
+        return;
+    }
+
+    if (!hooks->configured && hooks->layer_surface->initial_commit) {
+        const auto anchor = hooks->layer_surface->pending.anchor;
+        const auto& margin = hooks->layer_surface->pending.margin;
+        const auto desired_w = hooks->layer_surface->pending.desired_width;
+        const auto desired_h = hooks->layer_surface->pending.desired_height;
+        const int out_w = output ? output->width : 0;
+        const int out_h = output ? output->height : 0;
+
+        constexpr uint32_t ALL_ANCHORS =
+            ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
+            ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
+        constexpr uint32_t HORIZ_ANCHORS =
+            ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
+        constexpr uint32_t VERT_ANCHORS =
+            ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
+
+        uint32_t width = 0;
+        uint32_t height = 0;
+
+        if ((anchor & ALL_ANCHORS) == ALL_ANCHORS) {
+            width = static_cast<uint32_t>(std::max(0, out_w - static_cast<int>(margin.left) -
+                                                          static_cast<int>(margin.right)));
+            height = static_cast<uint32_t>(std::max(0, out_h - static_cast<int>(margin.top) -
+                                                           static_cast<int>(margin.bottom)));
+        } else if ((anchor & HORIZ_ANCHORS) == HORIZ_ANCHORS) {
+            width = static_cast<uint32_t>(std::max(0, out_w - static_cast<int>(margin.left) -
+                                                          static_cast<int>(margin.right)));
+            height = desired_h > 0 ? desired_h : static_cast<uint32_t>(out_h);
+        } else if ((anchor & VERT_ANCHORS) == VERT_ANCHORS) {
+            width = desired_w > 0 ? desired_w : static_cast<uint32_t>(out_w);
+            height = static_cast<uint32_t>(std::max(0, out_h - static_cast<int>(margin.top) -
+                                                           static_cast<int>(margin.bottom)));
+        } else {
+            width = desired_w > 0 ? desired_w : static_cast<uint32_t>(out_w);
+            height = desired_h > 0 ? desired_h : static_cast<uint32_t>(out_h);
+        }
+
+        wlr_layer_surface_v1_configure(hooks->layer_surface, width, height);
+        hooks->configured = true;
+        return;
+    }
+
+    timespec now{};
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    wlr_surface_send_frame_done(hooks->surface, &now);
+    request_present_reset();
+}
+
+void CompositorServer::Impl::handle_layer_surface_map(LayerSurfaceHooks* hooks) {
+    hooks->mapped = true;
+
+    if (hooks->layer_surface && hooks->layer_surface->current.keyboard_interactive ==
+                                    ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE) {
+        wlr_seat_set_keyboard(seat, keyboard.get());
+        wlr_seat_keyboard_notify_enter(seat, hooks->surface, keyboard->keycodes,
+                                       keyboard->num_keycodes, &keyboard->modifiers);
+    }
+
+    request_present_reset();
+}
+
+void CompositorServer::Impl::handle_layer_surface_unmap(LayerSurfaceHooks* hooks) {
+    hooks->mapped = false;
+
+    if (seat && hooks->surface && seat->keyboard_state.focused_surface == hooks->surface &&
+        focused_surface) {
+        wlr_seat_set_keyboard(seat, keyboard.get());
+        wlr_seat_keyboard_notify_enter(seat, focused_surface, keyboard->keycodes,
+                                       keyboard->num_keycodes, &keyboard->modifiers);
+    }
+
+    request_present_reset();
+}
+
+void CompositorServer::Impl::handle_layer_surface_destroy(LayerSurfaceHooks* hooks) {
+    if (hooks->destroyed) {
+        return;
+    }
+    hooks->destroyed = true;
+
+    if (seat && hooks->surface && seat->keyboard_state.focused_surface == hooks->surface &&
+        focused_surface) {
+        wlr_seat_set_keyboard(seat, keyboard.get());
+        wlr_seat_keyboard_notify_enter(seat, focused_surface, keyboard->keycodes,
+                                       keyboard->num_keycodes, &keyboard->modifiers);
+    }
+
+    detach_listener(hooks->surface_commit);
+    detach_listener(hooks->surface_map);
+    detach_listener(hooks->surface_unmap);
+    detach_listener(hooks->surface_destroy);
+    detach_listener(hooks->layer_destroy);
+    detach_listener(hooks->new_popup);
+
+    {
+        std::scoped_lock lock(hooks_mutex);
+        layer_hooks.erase(std::remove(layer_hooks.begin(), layer_hooks.end(), hooks),
+                          layer_hooks.end());
+    }
+
+    GOGGLES_LOG_DEBUG("Layer surface destroyed: id={}", hooks->id);
+    delete hooks;
+}
+
+// When both opposite anchors (left+right or top+bottom) are set, the surface stretches to fill;
+// the origin remains margin.left / margin.top — correct per wlr-layer-shell-v1 protocol.
+static auto compute_layer_position(const wlr_layer_surface_v1_state& state, int out_w, int out_h)
+    -> std::pair<int, int> {
+    const auto& margin = state.margin;
+    const int surf_w = static_cast<int>(state.actual_width);
+    const int surf_h = static_cast<int>(state.actual_height);
+
+    const bool anchored_left = (state.anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT) != 0;
+    const bool anchored_right = (state.anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT) != 0;
+    const bool anchored_top = (state.anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP) != 0;
+    const bool anchored_bottom = (state.anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM) != 0;
+
+    int pos_x = 0;
+    int pos_y = 0;
+
+    if (anchored_left) {
+        pos_x = static_cast<int>(margin.left);
+    } else if (anchored_right) {
+        pos_x = out_w - surf_w - static_cast<int>(margin.right);
+    } else {
+        pos_x = (out_w - surf_w) / 2;
+    }
+
+    if (anchored_top) {
+        pos_y = static_cast<int>(margin.top);
+    } else if (anchored_bottom) {
+        pos_y = out_h - surf_h - static_cast<int>(margin.bottom);
+    } else {
+        pos_y = (out_h - surf_h) / 2;
+    }
+
+    return {pos_x, pos_y};
+}
+
+void CompositorServer::Impl::render_layer_surfaces(wlr_render_pass* pass,
+                                                   zwlr_layer_shell_v1_layer target_layer) {
+    std::scoped_lock lock(hooks_mutex);
+    for (const auto* hooks : layer_hooks) {
+        if (!hooks->mapped || !hooks->layer_surface || !hooks->surface) {
+            continue;
+        }
+        if (hooks->layer != target_layer) {
+            continue;
+        }
+
+        const auto& state = hooks->layer_surface->current;
+        const int out_w = output ? output->width : 0;
+        const int out_h = output ? output->height : 0;
+
+        const auto [pos_x, pos_y] = compute_layer_position(state, out_w, out_h);
+
+        RenderSurfaceContext render_context{};
+        render_context.pass = pass;
+        render_context.offset_x = static_cast<int32_t>(pos_x);
+        render_context.offset_y = static_cast<int32_t>(pos_y);
+        wlr_layer_surface_v1_for_each_surface(hooks->layer_surface, render_surface_iterator,
+                                              &render_context);
+    }
 }
 
 void CompositorServer::Impl::activate_constraint(wlr_pointer_constraint_v1* constraint) {
@@ -2258,9 +2582,9 @@ void CompositorServer::Impl::apply_surface_resize_request(const SurfaceResizeReq
         wlr_xwayland_surface_set_maximized(xsurface, request.resize.maximized,
                                            request.resize.maximized);
         if (request.resize.width > 0 && request.resize.height > 0) {
-            const uint16_t width = static_cast<uint16_t>(
+            const auto width = static_cast<uint16_t>(
                 std::min<uint32_t>(request.resize.width, std::numeric_limits<uint16_t>::max()));
-            const uint16_t height = static_cast<uint16_t>(
+            const auto height = static_cast<uint16_t>(
                 std::min<uint32_t>(request.resize.height, std::numeric_limits<uint16_t>::max()));
             wlr_xwayland_surface_configure(xsurface, static_cast<int16_t>(xsurface->x),
                                            static_cast<int16_t>(xsurface->y), width, height);
@@ -2716,10 +3040,14 @@ bool CompositorServer::Impl::render_surface_to_frame(const InputTarget& target) 
         return false;
     }
 
+    render_layer_surfaces(pass, ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND);
+    render_layer_surfaces(pass, ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM);
     render_root_surface_tree(pass, root_surface);
     if (target.root_xsurface) {
         render_xwayland_popup_surfaces(pass, target);
     }
+    render_layer_surfaces(pass, ZWLR_LAYER_SHELL_V1_LAYER_TOP);
+    render_layer_surfaces(pass, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY);
     render_cursor_overlay(pass);
 
     if (!wlr_render_pass_submit(pass)) {
@@ -2771,6 +3099,45 @@ bool CompositorServer::Impl::render_surface_to_frame(const InputTarget& target) 
 
 auto CompositorServer::Impl::get_root_input_target() -> InputTarget {
     InputTarget target{};
+
+    // overlay and top layer surfaces take pointer priority over the app window.
+    // bottom and background layers sit behind the app and do not intercept input.
+    {
+        std::scoped_lock lock(hooks_mutex);
+        for (const auto* hooks : layer_hooks) {
+            if (!hooks->mapped || !hooks->layer_surface || !hooks->surface) {
+                continue;
+            }
+            if (hooks->layer != ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY &&
+                hooks->layer != ZWLR_LAYER_SHELL_V1_LAYER_TOP) {
+                continue;
+            }
+
+            const auto& state = hooks->layer_surface->current;
+            const int out_w = output ? output->width : 0;
+            const int out_h = output ? output->height : 0;
+            const int surf_w = static_cast<int>(state.actual_width);
+            const int surf_h = static_cast<int>(state.actual_height);
+
+            const auto [pos_x, pos_y] = compute_layer_position(state, out_w, out_h);
+
+            const double local_x = cursor_x - static_cast<double>(pos_x);
+            const double local_y = cursor_y - static_cast<double>(pos_y);
+
+            if (local_x < 0.0 || local_y < 0.0 || local_x >= static_cast<double>(surf_w) ||
+                local_y >= static_cast<double>(surf_h)) {
+                continue;
+            }
+
+            target.surface = hooks->surface;
+            target.xsurface = nullptr;
+            target.root_surface = hooks->surface;
+            target.root_xsurface = nullptr;
+            target.offset_x = static_cast<double>(pos_x);
+            target.offset_y = static_cast<double>(pos_y);
+            return target;
+        }
+    }
 
     wlr_surface* root_surface = nullptr;
     wlr_xwayland_surface* root_xsurface = nullptr;

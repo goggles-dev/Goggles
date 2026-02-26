@@ -128,8 +128,8 @@ jobs:
       - name: Run clang-tidy on changed files (PR only)
         if: github.event_name == 'pull_request'
         run: |
-          # Get list of changed .cpp/.hpp files
-          changed_files=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(cpp|hpp|c|h)$' || true)
+          # Get list of changed .cpp files (headers are analyzed transitively via their TU)
+          changed_files=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '\.(cpp|cc)$' || true)
           if [ -n "$changed_files" ]; then
             echo "Running clang-tidy on changed files:"
             echo "$changed_files"

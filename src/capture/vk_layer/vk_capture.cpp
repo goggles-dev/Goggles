@@ -721,7 +721,9 @@ bool CaptureManager::init_copy_cmds(SwapData* swap, VkDeviceData* dev_data) {
 
         VkImageMemoryBarrier src_barrier{};
         src_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        src_barrier.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+        // The overlay compositor writes via COLOR_ATTACHMENT_OUTPUT; we must flush those writes
+        // before the transfer reads the swapchain image.
+        src_barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         src_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
         src_barrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
         src_barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -750,7 +752,9 @@ bool CaptureManager::init_copy_cmds(SwapData* swap, VkDeviceData* dev_data) {
         dst_barrier.subresourceRange.layerCount = 1;
 
         VkImageMemoryBarrier barriers[2] = {src_barrier, dst_barrier};
-        funcs.CmdPipelineBarrier(cmd.cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+        // Wait for COLOR_ATTACHMENT_OUTPUT (overlay composite) before reading the swapchain image.
+        // BOTTOM_OF_PIPE would not create a real execution dependency on the overlay's writes.
+        funcs.CmdPipelineBarrier(cmd.cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                                  VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 2,
                                  barriers);
 

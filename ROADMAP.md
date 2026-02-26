@@ -53,6 +53,36 @@ Prevent regressions in filter chain when adding new features
 
 ---
 
+### 4. Compositor Protocol Completeness
+Extend nested compositor to support broader app compatibility
+
+**Current State**: Headless wlroots compositor with XDG Shell, XWayland, basic input
+
+**Missing Capabilities** (blocking specific app types):
+
+- [ ] **Layer Shell** (`wlr_layer_shell_v1`) - Game launcher overlays (Steam, Epic), desktop panels
+- [ ] **Presentation Time** (`wlr_presentation_time`) - Frame pacing, tear-free presentation, VRR
+- [ ] **Data Device** (`wl_data_device_manager`) - Clipboard and drag-and-drop for launchers
+- [ ] **DRM Lease** (`wlr_drm_lease_v1`) - VR applications (SteamVR)
+- [ ] **Idle Inhibit** (`zwlr_idle_inhibit_v1`) - Prevent screensaver during video playback
+- [ ] **Touch Input** (`wlr_touch`) - Mobile/touchscreen game ports
+- [ ] **Text Input** (`zwlr_text_input_v3`) - IME support for CJK languages
+
+**Nice-to-Have Enhancements**:
+
+- [ ] **Primary Selection** (`zwlr_primary_selection_v1`) - Middle-click paste
+- [ ] **Output Management** (`wlr_output_manager_v1`) - Multi-monitor display configuration
+- [ ] **Fractional Scaling** (`wp_fractional_scale_v1`) - HiDPI text rendering
+- [ ] **Tablet/Stylus** (`wlr_tablet_tool`) - Drawing applications
+- [ ] **Session Lock** (`ext_session_lock_manager_v1`) - Screen locker support
+- [ ] **Gamma Control** (`wlr_gamma_control_manager`) - Color management
+- [ ] **xdg-activation** - Window focus tokens for multi-window launchers
+- [ ] **Keyboard Shortcuts Inhibit** (`zwp_keyboard_shortcuts_inhibit_v1`) - Global hotkeys
+- [ ] **Tearing Control** (`wp_tearing_control_v1`) - Reduced latency mode
+- [ ] **Cursor Shape** (`wp_cursor_shape_v1`) - Custom cursor themes
+
+---
+
 ## === Phase 2: Network Streaming ===
 
 Extend local IPC streaming to network-capable streaming with encoding and transport.
