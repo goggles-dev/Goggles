@@ -765,10 +765,12 @@ VkResult VKAPI_CALL Goggles_QueuePresentKHR(VkQueue queue, const VkPresentInfoKH
         return VK_ERROR_DEVICE_LOST;
     }
 
-    VkPresentInfoKHR modified_present = *pPresentInfo;
-    get_capture_manager().on_present(queue, &modified_present, data);
-
-    return data->funcs.QueuePresentKHR(queue, &modified_present);
+    // Submit present first so downstream layers (e.g. Steam overlay) composite onto the
+    // swapchain image before we read it. Our copy is queued on the same VkQueue immediately
+    // after, so GPU execution order is guaranteed: [overlay_render] -> [our_copy] -> [flip].
+    VkResult result = data->funcs.QueuePresentKHR(queue, pPresentInfo);
+    get_capture_manager().on_present(queue, pPresentInfo, data);
+    return result;
 }
 
 VkResult VKAPI_CALL Goggles_WaitForPresentKHR(VkDevice device, VkSwapchainKHR swapchain,

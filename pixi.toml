@@ -151,6 +151,7 @@ sdl3 = "3.2.*"
 xorg-libxtst = "*"
 pixman = "*"
 xcb-util-wm = "*"
+xcb-util-renderutil = "*"
 
 # Local packages
 tracy = { path = "packages/tracy" }
