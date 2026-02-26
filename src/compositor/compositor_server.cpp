@@ -1315,6 +1315,9 @@ auto CompositorServer::get_presented_frame(uint64_t after_frame_number) const
     }
     if (stored.sync_fd.valid()) {
         frame.sync_fd = stored.sync_fd.dup();
+        if (!frame.sync_fd.valid()) {
+            return std::nullopt;
+        }
     }
     return frame;
 }
