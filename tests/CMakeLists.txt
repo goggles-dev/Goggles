@@ -264,3 +264,28 @@ if(VKCUBE_EXEC)
 else()
     message(STATUS "vkcube not found — skipping headless integration tests")
 endif()
+
+add_subdirectory(clients)
+add_subdirectory(visual)
+
+# Headless pipeline smoke test
+set(SMOKE_TEST_PNG "${CMAKE_CURRENT_BINARY_DIR}/smoke_out.png")
+
+add_test(NAME headless_smoke
+         COMMAND $<TARGET_FILE:goggles>
+             --headless --frames 5 --output ${SMOKE_TEST_PNG}
+             -- $<TARGET_FILE:solid_color_client>)
+
+set_tests_properties(headless_smoke PROPERTIES
+    LABELS "integration"
+    TIMEOUT 60
+    ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0")
+
+# Verify smoke test PNG was written
+add_test(NAME headless_smoke_png_check
+         COMMAND ${CMAKE_COMMAND} -E md5sum ${SMOKE_TEST_PNG})
+
+set_tests_properties(headless_smoke_png_check PROPERTIES
+    LABELS "integration"
+    DEPENDS headless_smoke
+    TIMEOUT 10)
