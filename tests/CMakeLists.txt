@@ -223,3 +223,44 @@ add_test(NAME goggles_test_headless_child_exit
 
 set_property(TEST goggles_test_headless_child_exit
     PROPERTY WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
+# Integration test: headless mode end-to-end (disabled in CI — requires display server + GPU)
+if(NOT VKCUBE_EXEC)
+    unset(VKCUBE_EXEC CACHE)
+    find_program(VKCUBE_EXEC NAMES vkcube)
+endif()
+
+set(HEADLESS_TEST_PNG "${CMAKE_CURRENT_BINARY_DIR}/goggles_headless_test.png")
+
+if(VKCUBE_EXEC)
+    add_test(NAME goggles_headless_integration
+             COMMAND $<TARGET_FILE:goggles>
+                 --headless --frames 3 --output ${HEADLESS_TEST_PNG}
+                 -- ${VKCUBE_EXEC})
+
+    set_property(TEST goggles_headless_integration
+        PROPERTY WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
+    set_property(TEST goggles_headless_integration
+        PROPERTY TIMEOUT 60)
+
+    set_property(TEST goggles_headless_integration
+        PROPERTY ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0")
+
+    # Verify the output PNG was written (depends on the run test passing first)
+    add_test(NAME goggles_headless_integration_png_exists
+             COMMAND ${CMAKE_COMMAND} -E md5sum ${HEADLESS_TEST_PNG})
+
+    set_property(TEST goggles_headless_integration_png_exists
+        PROPERTY DEPENDS goggles_headless_integration)
+
+    set_property(TEST goggles_headless_integration_png_exists
+        PROPERTY TIMEOUT 10)
+
+    if(DEFINED ENV{CI} OR DEFINED ENV{GITHUB_ACTIONS})
+        set_property(TEST goggles_headless_integration PROPERTY DISABLED TRUE)
+        set_property(TEST goggles_headless_integration_png_exists PROPERTY DISABLED TRUE)
+    endif()
+else()
+    message(STATUS "vkcube not found — skipping headless integration tests")
+endif()
