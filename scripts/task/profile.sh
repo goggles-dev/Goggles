@@ -160,10 +160,6 @@ if [[ ${#GOGGLES_ARGS[@]} -eq 0 ]]; then
   die "missing goggles arguments and/or target app command"
 fi
 
-if contains_arg "--detach" "${GOGGLES_ARGS[@]}"; then
-  die "--detach is not supported by pixi run profile"
-fi
-
 if ! contains_arg "--" "${GOGGLES_ARGS[@]}"; then
   die "missing '--' separator before target app command"
 fi

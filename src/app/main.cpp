@@ -501,49 +501,45 @@ static auto run_app(int argc, char** argv) -> int {
             return run_headless_mode(*app, cli_opts);
         }
 
-        if (!cli_opts.detach) {
-            const auto x11_display = app->x11_display();
-            const auto wayland_display = app->wayland_display();
+        const auto x11_display = app->x11_display();
+        const auto wayland_display = app->wayland_display();
 
-            auto spawn_result =
-                spawn_target_app(cli_opts.app_command, x11_display, wayland_display,
-                                 cli_opts.app_width, cli_opts.app_height, app->gpu_uuid());
-            if (!spawn_result) {
-                GOGGLES_LOG_CRITICAL("Failed to launch target app: {} ({})",
-                                     spawn_result.error().message,
-                                     goggles::error_code_name(spawn_result.error().code));
-                return EXIT_FAILURE;
-            }
-            child_pid = spawn_result.value();
-            GOGGLES_LOG_INFO("Launched target app (pid={})", child_pid);
+        auto spawn_result =
+            spawn_target_app(cli_opts.app_command, x11_display, wayland_display, cli_opts.app_width,
+                             cli_opts.app_height, app->gpu_uuid());
+        if (!spawn_result) {
+            GOGGLES_LOG_CRITICAL("Failed to launch target app: {} ({})",
+                                 spawn_result.error().message,
+                                 goggles::error_code_name(spawn_result.error().code));
+            return EXIT_FAILURE;
+        }
+        child_pid = spawn_result.value();
+        GOGGLES_LOG_INFO("Launched target app (pid={})", child_pid);
 
-            while (app->is_running()) {
-                app->process_event();
-                app->tick_frame();
-
-                if (child_pid > 0 && !child_exited) {
-                    pid_t result = waitpid(child_pid, &child_status, WNOHANG);
-                    if (result == child_pid) {
-                        child_exited = true;
-                        push_quit_event();
-                    }
-                }
-            }
+        while (app->is_running()) {
+            app->process_event();
+            app->tick_frame();
 
             if (child_pid > 0 && !child_exited) {
-                GOGGLES_LOG_INFO("Viewer exited; terminating target app (pid={})", child_pid);
-                terminate_child(child_pid);
-                return EXIT_FAILURE;
-            }
-
-            if (child_pid > 0 && child_exited) {
-                if (WIFEXITED(child_status)) {
-                    return WEXITSTATUS(child_status);
+                pid_t result = waitpid(child_pid, &child_status, WNOHANG);
+                if (result == child_pid) {
+                    child_exited = true;
+                    push_quit_event();
                 }
-                return EXIT_FAILURE;
             }
-        } else {
-            app->run();
+        }
+
+        if (child_pid > 0 && !child_exited) {
+            GOGGLES_LOG_INFO("Viewer exited; terminating target app (pid={})", child_pid);
+            terminate_child(child_pid);
+            return EXIT_FAILURE;
+        }
+
+        if (child_pid > 0 && child_exited) {
+            if (WIFEXITED(child_status)) {
+                return WEXITSTATUS(child_status);
+            }
+            return EXIT_FAILURE;
         }
         GOGGLES_LOG_INFO("Shutting down...");
     }

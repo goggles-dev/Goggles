@@ -28,27 +28,6 @@ struct ArgvBuilder {
 
 } // namespace
 
-TEST_CASE("parse_cli: detach mode accepts no app command", "[cli]") {
-    auto cfg = default_config_path();
-    ArgvBuilder args({"goggles", "--config", cfg, "--detach"});
-
-    auto result = goggles::app::parse_cli(args.argc(), args.argv.data());
-    REQUIRE(result);
-    REQUIRE(result->action == goggles::app::CliAction::run);
-    REQUIRE(result->options.detach);
-    REQUIRE(result->options.app_command.empty());
-}
-
-TEST_CASE("parse_cli: detach mode rejects app width/height", "[cli]") {
-    auto cfg = default_config_path();
-    ArgvBuilder args(
-        {"goggles", "--config", cfg, "--detach", "--app-width", "640", "--app-height", "480"});
-
-    auto result = goggles::app::parse_cli(args.argc(), args.argv.data());
-    REQUIRE(!result);
-    REQUIRE(result.error().code == ErrorCode::parse_error);
-}
-
 TEST_CASE("parse_cli: default mode requires app command after --", "[cli]") {
     auto cfg = default_config_path();
     ArgvBuilder args({"goggles", "--config", cfg});
@@ -74,7 +53,6 @@ TEST_CASE("parse_cli: default mode parses app command and args", "[cli]") {
     auto result = goggles::app::parse_cli(args.argc(), args.argv.data());
     REQUIRE(result);
     REQUIRE(result->action == goggles::app::CliAction::run);
-    REQUIRE(!result->options.detach);
     REQUIRE(result->options.app_command.size() == 3);
     REQUIRE(result->options.app_command[0] == "vkcube");
     REQUIRE(result->options.app_command[1] == "--wsi");
@@ -150,16 +128,6 @@ TEST_CASE("parse_cli: headless mode requires --frames", "[cli]") {
 TEST_CASE("parse_cli: headless mode requires --output", "[cli]") {
     auto cfg = default_config_path();
     ArgvBuilder args({"goggles", "--config", cfg, "--headless", "--frames", "10", "--", "vkcube"});
-
-    auto result = goggles::app::parse_cli(args.argc(), args.argv.data());
-    REQUIRE(!result);
-    REQUIRE(result.error().code == ErrorCode::parse_error);
-}
-
-TEST_CASE("parse_cli: headless and detach are mutually exclusive", "[cli]") {
-    auto cfg = default_config_path();
-    ArgvBuilder args({"goggles", "--config", cfg, "--headless", "--detach", "--frames", "10",
-                      "--output", "/tmp/test.png"});
 
     auto result = goggles::app::parse_cli(args.argc(), args.argv.data());
     REQUIRE(!result);
