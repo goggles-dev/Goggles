@@ -43,4 +43,4 @@
 
 - [x] 8.1 `pixi run build -p test` completes without errors or clang-tidy warnings
 - [x] 8.2 `pixi run test -p test` passes all existing unit tests with no regressions
-- [ ] 8.3 Manual smoke test: `pixi run build -p debug && build/debug/bin/goggles --headless --frames 5 --output /tmp/smoke.png -- vkcube` exits 0 and produces a valid PNG
+- [x] 8.3 Manual smoke test: `pixi run build -p debug && build/debug/bin/goggles --headless --frames 5 --output /tmp/smoke.png -- vkcube` exits 0 and produces a valid PNG

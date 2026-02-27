@@ -32,7 +32,6 @@ auto register_options(CLI::App& app, CliOptions& options) -> void {
         ->check(CLI::ExistingFile);
     app.add_option("--gpu", options.gpu_selector,
                    "Select GPU by index (e.g. 0) or name substring (e.g. AMD)");
-    app.add_flag("--detach", options.detach, "Viewer-only mode (do not launch target app)");
     app.add_option("--app-width", options.app_width,
                    "Source resolution width (also sets GOGGLES_WIDTH for launched app)")
         ->check(CLI::Range(1u, 16384u));
@@ -54,18 +53,15 @@ auto register_options(CLI::App& app, CliOptions& options) -> void {
     if (!has_separator) {
         if (argc <= 1) {
             return make_error<void>(ErrorCode::parse_error,
-                                    "missing target app command (use '--detach' for viewer-only "
-                                    "mode, or pass app after '--')");
+                                    "missing target app command (pass app after '--')");
         }
         return make_error<void>(ErrorCode::parse_error,
-                                "missing '--' separator before target app command (use '--detach' "
-                                "for viewer-only mode)");
+                                "missing '--' separator before target app command");
     }
 
     if (options.app_command.empty()) {
         return make_error<void>(ErrorCode::parse_error,
-                                "missing target app command (use '--detach' for viewer-only mode, "
-                                "or pass app after '--')");
+                                "missing target app command (pass app after '--')");
     }
     return {};
 }
@@ -77,12 +73,10 @@ auto parse_cli(int argc, char** argv) -> CliResult {
     CLI::App app{GOGGLES_PROJECT_NAME " - Low-latency game streaming and post-processing viewer"};
     app.set_version_flag("--version,-v", GOGGLES_PROJECT_NAME " v" GOGGLES_VERSION);
     app.footer(R"(Usage:
-  goggles --detach
   goggles --headless --frames N --output <path.png> [options] -- <app> [app_args...]
   goggles [options] -- <app> [app_args...]
 
 Notes:
-  - Default mode (no --detach) launches the target app inside the compositor.
   - '--' is required before <app> to avoid app args (e.g. '--config') being parsed as Goggles options.)");
 
     CliOptions options;
@@ -102,13 +96,9 @@ Notes:
 
         if (!has_separator) {
             return make_error<CliParseOutcome>(
-                ErrorCode::parse_error,
-                (argc <= 1)
-                    ? "missing target app command (use '--detach' for viewer-only mode, or pass "
-                      "app "
-                      "after '--')"
-                    : "missing '--' separator before target app command (use '--detach' for "
-                      "viewer-only mode)");
+                ErrorCode::parse_error, (argc <= 1)
+                                            ? "missing target app command (pass app after '--')"
+                                            : "missing '--' separator before target app command");
         }
 
         (void)app.exit(e);
@@ -122,23 +112,7 @@ Notes:
         }
     }
 
-    if (options.detach) {
-        if (!options.app_command.empty()) {
-            return make_error<CliParseOutcome>(ErrorCode::parse_error,
-                                               "detach mode does not accept an app command");
-        }
-        if (options.app_width != 0 || options.app_height != 0) {
-            return make_error<CliParseOutcome>(
-                ErrorCode::parse_error,
-                "--app-width/--app-height are not supported in detach mode");
-        }
-    }
-
     if (options.headless) {
-        if (options.detach) {
-            return make_error<CliParseOutcome>(ErrorCode::parse_error,
-                                               "--headless and --detach are mutually exclusive");
-        }
         if (options.frames == 0) {
             return make_error<CliParseOutcome>(ErrorCode::parse_error,
                                                "--headless requires --frames");
@@ -150,13 +124,11 @@ Notes:
         // Headless mode also requires an app command (validated by default mode below).
     }
 
-    if (!options.detach) {
-        auto validation_result = validate_default_mode(argc, has_separator, options);
-        if (!validation_result) {
-            return make_error<CliParseOutcome>(validation_result.error().code,
-                                               validation_result.error().message,
-                                               validation_result.error().location);
-        }
+    auto validation_result = validate_default_mode(argc, has_separator, options);
+    if (!validation_result) {
+        return make_error<CliParseOutcome>(validation_result.error().code,
+                                           validation_result.error().message,
+                                           validation_result.error().location);
     }
 
     return CliParseOutcome{

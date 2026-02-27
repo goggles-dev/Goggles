@@ -36,7 +36,6 @@ fi
 usage() {
   cat <<'EOF'
 Usage:
-  pixi run start [options] --detach
   pixi run start [options] [goggles_args...] -- <app> [app_args...]
 
 Options:
@@ -44,14 +43,11 @@ Options:
   -h, --help            Show this help
 
 Notes:
-  - Default mode (no --detach) launches the target app inside the nested compositor.
-  - Use '--detach' to start viewer-only mode (manual app launch).
-  - When launching an app, '--' is required to separate Goggles args from app args.
+  - '--' is required to separate Goggles args from app args.
 
 Examples:
   pixi run start -- vkcube
   pixi run start -p profile --app-width 480 --app-height 240 -- vkcube
-  pixi run start --detach
 EOF
 }
 
