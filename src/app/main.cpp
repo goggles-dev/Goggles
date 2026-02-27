@@ -115,11 +115,19 @@ static auto spawn_target_app(const std::vector<std::string>& command,
     // Reset the signal mask in the child so blocked signals in the parent
     // (e.g. SIGTERM blocked for headless signalfd) don't affect the reaper.
     posix_spawnattr_t attr{};
-    posix_spawnattr_init(&attr);
+    if (posix_spawnattr_init(&attr) != 0) {
+        return goggles::make_error<pid_t>(goggles::ErrorCode::unknown_error,
+                                          std::string("posix_spawnattr_init() failed: ") +
+                                              std::strerror(errno));
+    }
     sigset_t empty_mask{};
     sigemptyset(&empty_mask);
-    posix_spawnattr_setsigmask(&attr, &empty_mask);
-    posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETSIGMASK);
+    if (posix_spawnattr_setsigmask(&attr, &empty_mask) != 0 ||
+        posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETSIGMASK) != 0) {
+        posix_spawnattr_destroy(&attr);
+        return goggles::make_error<pid_t>(goggles::ErrorCode::unknown_error,
+                                          "posix_spawnattr configuration failed");
+    }
     const int rc = posix_spawn(&pid, reaper_path.c_str(), nullptr, &attr, argv.data(), envp.data());
     posix_spawnattr_destroy(&attr);
     if (rc != 0) {
