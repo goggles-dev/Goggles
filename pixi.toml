@@ -89,7 +89,7 @@ cmd = "bash scripts/task/help.sh"
 [tasks.update-golden]
 description = "Regenerate golden reference images for shader visual tests"
 cmd = "bash scripts/task/update-golden.sh"
-depends-on = ["_check-init"]
+depends-on = ["build"]
 
 [dependencies]
 cmake = "3.31.*"

@@ -1,6 +1,7 @@
 #include "image_compare.hpp"
 
 #include <catch2/catch_test_macros.hpp>
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -51,6 +52,10 @@ auto run_goggles(const std::vector<std::string>& args) -> int {
     argv.push_back(nullptr);
 
     const pid_t pid = fork();
+    if (pid < 0) {
+        return -1;
+    }
+
     if (pid == 0) {
         // Child: replace process image with goggles binary
         execvp(argv[0], const_cast<char* const*>(argv.data()));
@@ -58,8 +63,10 @@ auto run_goggles(const std::vector<std::string>& args) -> int {
         _exit(127);
     }
 
-    int status = 0;
-    waitpid(pid, &status, 0);
+    int status = -1;
+    if (waitpid(pid, &status, 0) < 0) {
+        return -1;
+    }
     return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
@@ -126,12 +133,23 @@ void check_border_row(const Image& img, int y, std::string_view label) {
 }
 
 // Builds the goggles argument list for a headless capture run
-auto build_args(const std::string& output_path, const std::string& config_path)
-    -> std::vector<std::string> {
-    return {
-        GOGGLES_BINARY, "--headless", "--frames",  "5",  "--output",
-        output_path,    "--config",   config_path, "--", QUADRANT_CLIENT_BINARY,
+auto build_args(const std::string& output_path, const std::string& config_path,
+                uint32_t app_width = 0, uint32_t app_height = 0) -> std::vector<std::string> {
+    std::vector<std::string> args{
+        GOGGLES_BINARY, "--headless", "--frames", "5",
+        "--output",     output_path,  "--config", config_path,
     };
+
+    if (app_width > 0 && app_height > 0) {
+        args.emplace_back("--app-width");
+        args.emplace_back(std::to_string(app_width));
+        args.emplace_back("--app-height");
+        args.emplace_back(std::to_string(app_height));
+    }
+
+    args.emplace_back("--");
+    args.emplace_back(QUADRANT_CLIENT_BINARY);
+    return args;
 }
 
 // ── Test cases ────────────────────────────────────────────────────────────────
@@ -140,8 +158,9 @@ auto build_args(const std::string& output_path, const std::string& config_path)
 //   fit_letterbox  1920×1080: src_ar(4:3) < vp_ar(16:9) → fill height
 //                             content 1440×1080, offset_x=240, offset_y=0
 //                             side bars: x<240, x>=1680
-//   fit_pillarbox   800×600:  src_ar(4:3) = vp_ar(4:3) → perfect fit
-//                             content 800×600, no bars
+//   fit_pillarbox   800×600:  force headless output to 800×600 via
+//                             --app-width/--app-height; src_ar(4:3) = vp_ar(4:3)
+//                             → perfect fit, content 800×600, no bars
 //   fill           1920×1080: src_ar(4:3) < vp_ar(16:9) → fill width
 //                             content 1920×1440, offset_y negative → image overflows
 //                             entire output filled, no black bars visible
@@ -174,28 +193,23 @@ TEST_CASE("aspect ratio - fit letterbox (1920x1080)", "[visual][aspect]") {
     check_quadrants(img, CX, CY, CW, CH);
 }
 
-TEST_CASE("aspect ratio - fit side bars verified (1920x1080)", "[visual][aspect]") {
+TEST_CASE("aspect ratio - fit perfect (800x600)", "[visual][aspect]") {
     const TempFile tmp(".png");
     const std::string config = std::string(VISUAL_CONFIGS_DIR) + "/aspect_fit_pillarbox.toml";
 
-    // Source 640×480 (4:3) into 1920×1080 (16:9) → content 1440×1080, side bars x<240 and x>=1680
-    const auto exit_code = run_goggles(build_args(tmp.path.string(), config));
+    // Force headless output to 800x600 (4:3) while source remains quadrant_client
+    // content at 4:3. fit mode should produce a perfect fill with no bars.
+    const auto exit_code = run_goggles(build_args(tmp.path.string(), config, 800, 600));
     REQUIRE(exit_code == 0);
 
     const auto img_result = load_png(tmp.path);
     REQUIRE(img_result.has_value());
     const auto& img = *img_result;
-    REQUIRE(img.width == 1920);
-    REQUIRE(img.height == 1080);
+    REQUIRE(img.width == 800);
+    REQUIRE(img.height == 600);
 
-    // fit mode with 4:3 source in 16:9 viewport → full-height content with side bars
-    check_border_column(img, 100, "left bar");
-    check_border_column(img, 200, "left bar inner");
-    check_border_column(img, 1750, "right bar");
-    check_border_column(img, 1800, "right bar inner");
-
-    // Content spans x=[240,1680), y=[0,1080)
-    check_quadrants(img, 240, 0, 1440, 1080);
+    // Perfect fit: content spans the full output, no black bars.
+    check_quadrants(img, 0, 0, 800, 600);
 }
 
 TEST_CASE("aspect ratio - fill (1920x1080)", "[visual][aspect]") {
