@@ -86,6 +86,11 @@ cmd = "bash -c \"echo 'Formatting C/C++...' && git ls-files -z '*.c' '*.h' '*.cp
 description = "Show task usage"
 cmd = "bash scripts/task/help.sh"
 
+[tasks.update-golden]
+description = "Regenerate golden reference images for shader visual tests"
+cmd = "bash scripts/task/update-golden.sh"
+depends-on = ["_check-init"]
+
 [dependencies]
 cmake = "3.31.*"
 ninja = "1.12.*"
