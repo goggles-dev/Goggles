@@ -1,0 +1,8 @@
+[shader]
+preset = ""
+
+[render]
+scale_mode = "fill"
+
+[logging]
+level = "warn"

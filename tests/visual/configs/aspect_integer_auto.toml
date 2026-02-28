@@ -1,0 +1,9 @@
+[shader]
+preset = ""
+
+[render]
+scale_mode = "integer"
+integer_scale = 0
+
+[logging]
+level = "warn"

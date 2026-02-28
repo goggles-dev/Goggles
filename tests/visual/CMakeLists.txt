@@ -35,3 +35,48 @@ target_include_directories(test_image_compare PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_test(NAME image_compare_unit_tests COMMAND test_image_compare)
 set_tests_properties(image_compare_unit_tests PROPERTIES LABELS "unit")
 set_property(TEST image_compare_unit_tests PROPERTY WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
+# Visual regression test: aspect ratio geometry
+add_executable(test_aspect_ratio test_aspect_ratio.cpp)
+target_link_libraries(test_aspect_ratio PRIVATE
+    image_compare
+    Catch2::Catch2WithMain
+)
+target_compile_features(test_aspect_ratio PRIVATE cxx_std_20)
+target_include_directories(test_aspect_ratio PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_definitions(test_aspect_ratio PRIVATE
+    GOGGLES_BINARY="$<TARGET_FILE:goggles>"
+    QUADRANT_CLIENT_BINARY="$<TARGET_FILE:quadrant_client>"
+    VISUAL_CONFIGS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/configs"
+)
+
+add_test(NAME test_aspect_ratio COMMAND test_aspect_ratio)
+set_tests_properties(test_aspect_ratio PROPERTIES
+    LABELS "visual"
+    TIMEOUT 120
+    ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+
+# Visual regression test: shader bypass and zfast-crt
+add_executable(test_shader_basic test_shader_basic.cpp)
+target_link_libraries(test_shader_basic PRIVATE
+    image_compare
+    Catch2::Catch2WithMain
+)
+target_compile_features(test_shader_basic PRIVATE cxx_std_20)
+target_include_directories(test_shader_basic PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_definitions(test_shader_basic PRIVATE
+    GOGGLES_BINARY="$<TARGET_FILE:goggles>"
+    QUADRANT_CLIENT_BINARY="$<TARGET_FILE:quadrant_client>"
+    VISUAL_CONFIGS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/configs"
+    GOLDEN_DIR="${CMAKE_SOURCE_DIR}/tests/golden"
+)
+
+add_test(NAME test_shader_basic COMMAND test_shader_basic)
+set_tests_properties(test_shader_basic PROPERTIES
+    LABELS "visual"
+    TIMEOUT 120
+    ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)

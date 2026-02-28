@@ -1,0 +1,8 @@
+[shader]
+preset = ""
+
+[render]
+scale_mode = "stretch"
+
+[logging]
+level = "warn"
