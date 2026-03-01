@@ -267,6 +267,7 @@ endif()
 
 add_subdirectory(clients)
 add_subdirectory(visual)
+add_subdirectory(gpu)
 
 # Headless pipeline smoke test
 set(SMOKE_TEST_PNG "${CMAKE_CURRENT_BINARY_DIR}/smoke_out.png")

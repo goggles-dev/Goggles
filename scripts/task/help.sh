@@ -8,6 +8,7 @@ Build Commands
   pixi run build [-p PRESET]              Build 64-bit app
   pixi run build-all-presets              Build all CMake presets
   pixi run test [-p PRESET]               Run tests
+  pixi run test-gpu [-p PRESET]           Run GPU pytest suite
 
 Run Commands
   pixi run start [-p PRESET] [--] <APP> [APP_ARGS...]

@@ -1,0 +1,6 @@
+[package]
+name = "renderdoc"
+version = "1.43"
+
+[package.build]
+backend = { name = "pixi-build-rattler-build", version = "==0.3.7" }

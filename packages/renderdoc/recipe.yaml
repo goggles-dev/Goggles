@@ -1,0 +1,96 @@
+package:
+  name: renderdoc
+  version: "1.43"
+
+source:
+  url: https://renderdoc.org/stable/1.43/renderdoc_1.43.tar.gz
+  sha256: b152b476092276d7b620a2bdca1dfe65d07b414185778c49c6e6805aeb73d24b
+
+build:
+  number: 3
+  script: |
+    set -e
+
+    SRC=renderdoc_1.43
+    if [ ! -d "$SRC" ]; then
+        SRC=.
+    fi
+
+    mkdir -p $PREFIX/bin $PREFIX/include $PREFIX/lib $PREFIX/share $PREFIX/etc
+    cp -a $SRC/bin/* $PREFIX/bin/
+    cp -a $SRC/include/* $PREFIX/include/
+    cp -a $SRC/lib/* $PREFIX/lib/
+    cp -a $SRC/share/* $PREFIX/share/
+    cp -a $SRC/etc/* $PREFIX/etc/
+
+    sed -i "s|/io/dist|$PREFIX|g" $PREFIX/etc/vulkan/implicit_layer.d/renderdoc_capture.json
+
+    cp -a $PREFIX/bin/renderdoccmd $PREFIX/bin/renderdoccmd-real
+    rm -f $PREFIX/bin/rdc
+
+    cat > $PREFIX/bin/rdc <<'EOF'
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    renderdoccmd_bin="$script_dir/renderdoccmd-real"
+
+    if [ ! -x "$renderdoccmd_bin" ]; then
+      renderdoccmd_bin="$(command -v renderdoccmd)"
+    fi
+
+    if [ $# -eq 0 ]; then
+      exec "$renderdoccmd_bin"
+    fi
+
+    command_name="$1"
+    shift
+
+    case "$command_name" in
+      capture)
+        translated_args=()
+        while [ $# -gt 0 ]; do
+          case "$1" in
+            -o|--output)
+              if [ $# -lt 2 ]; then
+                echo "error: option '$1' requires an argument" >&2
+                exit 2
+              fi
+              translated_args+=("--capture-file" "$2")
+              shift 2
+              ;;
+            --output=*)
+              translated_args+=("--capture-file" "${1#--output=}")
+              shift
+              ;;
+            --)
+              shift
+              ;;
+            *)
+              translated_args+=("$1")
+              shift
+              ;;
+          esac
+        done
+
+        exec "$renderdoccmd_bin" capture "${translated_args[@]}"
+        ;;
+      open|close|draws|assert-clean|assert-state|assert-pixel|diff)
+        if command -v rdc-cli >/dev/null 2>&1; then
+          exec rdc-cli "$command_name" "$@"
+        fi
+
+        exec "$renderdoccmd_bin" "$command_name" "$@"
+        ;;
+      *)
+        exec "$renderdoccmd_bin" "$command_name" "$@"
+        ;;
+    esac
+    EOF
+
+    chmod +x $PREFIX/bin/rdc
+
+about:
+  homepage: https://renderdoc.org/
+  license: MIT
+  summary: RenderDoc Linux tooling bundle for GPU capture and CLI validation
