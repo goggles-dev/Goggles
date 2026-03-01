@@ -182,18 +182,15 @@ def _capture_deterministic_frame(
     run_subprocess: SubprocessRunnerFixture,
     subprocess_policy: SubprocessPolicyFixture,
 ) -> Path:
-    try:
-        metadata = run_headless_capture(
-            run_subprocess=run_subprocess,
-            artifact_dir=test_artifact_dir,
-            goggles_binary=gpu_preflight.goggles,
-            target_binary=gpu_preflight.quadrant_client,
-            timeout_seconds=subprocess_policy.timeout_seconds,
-            goggles_args=("--frames", "5"),
-        )
-        return metadata.capture_path
-    except RuntimeError as exc:
-        pytest.skip(str(exc))
+    metadata = run_headless_capture(
+        run_subprocess=run_subprocess,
+        artifact_dir=test_artifact_dir,
+        goggles_binary=gpu_preflight.goggles,
+        target_binary=gpu_preflight.quadrant_client,
+        timeout_seconds=subprocess_policy.timeout_seconds,
+        goggles_args=("--frames", "5"),
+    )
+    return metadata.capture_path
 
 
 def test_clean_validation_layers_for_deterministic_capture(

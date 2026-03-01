@@ -14,6 +14,7 @@ pytest = importlib.import_module("pytest")
 
 _VALID_PRESET_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _REQUIRED_RDC_COMMANDS = ("assert-clean", "assert-state", "assert-pixel", "diff")
+_RDC_HELP_TIMEOUT_SECONDS = 10
 
 
 @dataclass(frozen=True)
@@ -132,8 +133,9 @@ def _missing_rdc_contract_commands() -> list[str]:
                 check=False,
                 capture_output=True,
                 text=True,
+                timeout=_RDC_HELP_TIMEOUT_SECONDS,
             )
-        except OSError:
+        except (OSError, subprocess.TimeoutExpired):
             missing.append(command_name)
             continue
 

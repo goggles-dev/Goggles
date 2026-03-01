@@ -64,7 +64,10 @@ build:
               shift
               ;;
             --)
+              translated_args+=("--")
               shift
+              translated_args+=("$@")
+              break
               ;;
             *)
               translated_args+=("$1")

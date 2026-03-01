@@ -302,18 +302,15 @@ def _capture_zfast_crt_frame(
 ) -> Path:
     shader_preset = repo_root / "shaders" / "retroarch" / "crt" / "zfast-crt.slangp"
 
-    try:
-        metadata = run_headless_capture(
-            run_subprocess=run_subprocess,
-            artifact_dir=test_artifact_dir,
-            goggles_binary=gpu_preflight.goggles,
-            target_binary=gpu_preflight.quadrant_client,
-            timeout_seconds=subprocess_policy.timeout_seconds,
-            capture_name="zfast-shader-state.rdc",
-            goggles_args=("--frames", "5", "--preset", shader_preset),
-        )
-    except RuntimeError as exc:
-        pytest.skip(str(exc))
+    metadata = run_headless_capture(
+        run_subprocess=run_subprocess,
+        artifact_dir=test_artifact_dir,
+        goggles_binary=gpu_preflight.goggles,
+        target_binary=gpu_preflight.quadrant_client,
+        timeout_seconds=subprocess_policy.timeout_seconds,
+        capture_name="zfast-shader-state.rdc",
+        goggles_args=("--frames", "5", "--preset", shader_preset),
+    )
 
     return metadata.capture_path
 

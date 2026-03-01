@@ -426,18 +426,15 @@ def _capture_frame(
     if preset is not None:
         goggles_args.extend(["--preset", preset])
 
-    try:
-        metadata = run_headless_capture(
-            run_subprocess=run_subprocess,
-            artifact_dir=test_artifact_dir,
-            goggles_binary=gpu_preflight.goggles,
-            target_binary=gpu_preflight.quadrant_client,
-            timeout_seconds=subprocess_policy.timeout_seconds,
-            capture_name=capture_name,
-            goggles_args=tuple(goggles_args),
-        )
-    except RuntimeError as exc:
-        pytest.skip(str(exc))
+    metadata = run_headless_capture(
+        run_subprocess=run_subprocess,
+        artifact_dir=test_artifact_dir,
+        goggles_binary=gpu_preflight.goggles,
+        target_binary=gpu_preflight.quadrant_client,
+        timeout_seconds=subprocess_policy.timeout_seconds,
+        capture_name=capture_name,
+        goggles_args=tuple(goggles_args),
+    )
 
     return metadata.capture_path
 
