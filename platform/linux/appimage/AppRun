@@ -248,8 +248,8 @@ GOGGLES_BIN="${APPDIR}/usr/bin/goggles"
 
 export GOGGLES_RESOURCE_DIR="${APPDIR}/usr/share/goggles"
 
-DEFAULT_SHADER="${APPDIR}/usr/share/goggles/shaders/retroarch/crt/zfast-crt.slangp"
-XDG_SHADER="${DATA_ROOT}/goggles/shaders/retroarch/crt/zfast-crt.slangp"
+DEFAULT_SHADER="${APPDIR}/usr/share/goggles/shaders/retroarch/crt/crt-lottes-fast.slangp"
+XDG_SHADER="${DATA_ROOT}/goggles/shaders/retroarch/crt/crt-lottes-fast.slangp"
 
 extra_args=()
 has_shader=0
