@@ -124,7 +124,7 @@ Project constraints that shape this design:
 6. Migrate UI control plumbing to curated descriptors and `control_id`-keyed callbacks.
 7. Preserve and verify async reload success/failure behavior, swap one-shot signaling, and deferred-destroy safety invariants.
 8. Align build targets/naming and wire chain/shader/texture ownership under `goggles-filter-chain`.
-9. Run structural boundary guards (including shader-header isolation) in CI and full test validation; keep rollback to prior link wiring if regressions appear.
+9. Validate structural boundaries via tests and source-audit checks (including shader-header isolation) without dedicated guard-script CI/local gating; keep rollback to prior link wiring if regressions appear.
 
 ## Open Questions
 

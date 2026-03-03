@@ -12,7 +12,7 @@ The current filter chain is tightly coupled to backend lifecycle and app/UI cont
 
 - Define a standalone Goggles filter library boundary that owns filter-chain, shader, and texture internals.
 - Keep host backend responsibilities focused on swapchain, import, synchronization, and present.
-- Remove direct exposure of concrete `FilterChain*` from backend public APIs and app-facing code by introducing backend-facing facade access.
+- Remove direct exposure of concrete `FilterChain*` from backend public APIs and app-facing code by introducing backend-facing filter-chain boundary access.
 - Remove reverse include coupling from chain to backend helper headers.
 
 ## Non-goals
@@ -25,7 +25,7 @@ The current filter chain is tightly coupled to backend lifecycle and app/UI cont
 
 - Introduce the `goggles-filter-chain` library boundary for filter runtime code.
 - Re-scope ownership so chain+shader+texture internals are grouped under the filter library boundary, including shader-runtime ownership/creation.
-- Add backend-facing facade methods for filter controls and parameter operations, replacing any external use of concrete `FilterChain*` and deprecating backend chain accessors that leak concrete internals.
+- Add backend-facing filter-chain boundary methods for filter controls and parameter operations, replacing any external use of concrete `FilterChain*` and deprecating backend chain accessors that leak concrete internals.
 - Add a boundary-safe `VulkanContext` contract placement decision and migration task so host<->filter initialization uses a boundary-owned header with boundary-allowed includes only.
 - Add a boundary-safe control descriptor for both effect and prechain controls, with explicit stage domain (`prechain`, `effect`), deterministic enumeration order, stable `control_id` semantics, and optional `description` fallback behavior.
 - Move control mutation/callback surfaces to `control_id` contracts (no `pass_index` leakage across backend/app/UI boundaries).
@@ -52,12 +52,12 @@ The current filter chain is tightly coupled to backend lifecycle and app/UI cont
 
 - Verify unchanged rendering behavior for existing presets and semantic bindings.
 - Verify async reload success and failure behavior, swapchain recreation, and resize paths preserve current behavior.
-- Verify app/UI code paths operate through backend-facing facade methods only, with control callbacks keyed by `control_id`.
+- Verify app/UI code paths operate through backend-facing filter-chain boundary methods only, with control callbacks keyed by `control_id`.
 - Verify descriptor contracts: closed stage domain (`prechain`, `effect`), deterministic enumeration order, and out-of-range set-value handling.
 - Verify chain sources no longer include backend helper headers.
-- Verify boundary guards: no app/UI includes of `render/chain/filter_chain.hpp`, no app/UI includes of `render/shader/*`, no app/UI/backend-public concrete-chain accessor usage, and no backend helper includes in boundary code.
+- Verify boundary constraints: no app/UI includes of `render/chain/filter_chain.hpp`, no app/UI includes of `render/shader/*`, no app/UI/backend-public concrete-chain accessor usage, and no backend helper includes in boundary code.
 - Verify one-way build dependency direction and dependency audit for `goggles-filter-chain` link targets.
-- Verify structural guards run in CI-required checks, not local-only scripts.
+- Keep CI/local preset test flows free of dedicated `check-filter-boundary.sh` guard gating; rely on tests plus source-audit checks for boundary regressions.
 - Run existing render and integration test suites relevant to parser/preprocessor/shader runtime/filter-chain logic.
 
 ## Acceptance Criteria
@@ -66,7 +66,7 @@ The current filter chain is tightly coupled to backend lifecycle and app/UI cont
 - Semantic parity explicitly includes `Source`, `OriginalHistory#`, `PassOutput#`, `PassFeedback#`, and `<alias>Feedback`.
 - Descriptor contract is deterministic and testable: known stage domain values, deterministic order, and `control_id`-based callbacks.
 - Async reload success and failure semantics are both specified and tested, and swap-signal semantics remain one-shot.
-- Structural guards are CI-gated and fail the build when boundary leaks are introduced.
+- Boundary leak constraints are maintained without dedicated guard-script CI gating.
 - `VulkanContext` placement is explicit, boundary-safe, and covered by include/dependency checks.
 
 ## Impact

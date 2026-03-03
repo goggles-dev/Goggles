@@ -151,7 +151,7 @@ Adapters from shader-internal metadata to curated control descriptors SHALL live
 
 #### Scenario: UI/include isolation from shader internals
 - **GIVEN** non-boundary consumer paths such as `src/ui` and `src/app`
-- **WHEN** structural boundary checks run
+- **WHEN** boundary compliance is validated through tests and source audit
 - **THEN** non-boundary consumers SHALL NOT include `render/shader/*` headers for control metadata access
 
 ### Requirement: No Concrete FilterChain Type Exposure Outside Boundary
@@ -159,17 +159,17 @@ Backend public APIs, app code, and UI code MUST NOT depend on concrete chain hea
 
 #### Scenario: Include guard in app and UI
 - **GIVEN** source files under `src/app` and `src/ui`
-- **WHEN** structural boundary checks run
+- **WHEN** boundary compliance is validated through tests and source audit
 - **THEN** files under `src/app` and `src/ui` SHALL NOT include `render/chain/filter_chain.hpp`
 
 #### Scenario: Backend public header guard
 - **GIVEN** backend public headers consumed by app/UI and downstream tests
-- **WHEN** structural boundary checks run
+- **WHEN** boundary compliance is validated through tests and source audit
 - **THEN** backend public headers SHALL NOT expose concrete `FilterChain` types or accessors returning concrete chain internals
 
 #### Scenario: Type and accessor guard in app and UI
 - **GIVEN** source files under `src/app` and `src/ui`
-- **WHEN** structural boundary checks run
+- **WHEN** boundary compliance is validated through tests and source audit
 - **THEN** no direct references to concrete `FilterChain*` SHALL exist in app or UI code
 - **AND** app/UI code SHALL NOT call backend chain-accessor methods that expose concrete chain internals
 
