@@ -143,7 +143,7 @@ TEST_CASE("Async swap and resize safety contract coverage", "[filter_chain][asyn
 
     const auto failure_branch_pos = backend_text->find("if (!result) {", check_swap_pos);
     const auto failure_reset_pos =
-        backend_text->find("m_pending_filter_chain.reset();", failure_branch_pos);
+        backend_text->find("goggles_chain_destroy(&m_pending_filter_chain);", failure_branch_pos);
     const auto failure_clear_ready_pos =
         backend_text->find("m_pending_chain_ready.store(false", failure_reset_pos);
     const auto failure_return_pos = backend_text->find("return;", failure_clear_ready_pos);
@@ -160,15 +160,13 @@ TEST_CASE("Async swap and resize safety contract coverage", "[filter_chain][asyn
     REQUIRE(failure_clear_ready_pos < failure_return_pos);
     REQUIRE(failure_return_pos < success_signal_pos);
 
-    const auto swap_reapply_resolution_pos = backend_text->find(
-        "m_filter_chain->set_prechain_resolution(m_source_resolution);", check_swap_pos);
+    const auto swap_reapply_resolution_pos =
+        backend_text->find("goggles_chain_prechain_resolution_set(", check_swap_pos);
     REQUIRE(swap_reapply_resolution_pos != std::string::npos);
     REQUIRE(swap_reapply_resolution_pos < success_signal_pos);
 
-    REQUIRE(backend_text->find(".destroy_after_frame = m_frame_count + MAX_FRAMES_IN_FLIGHT + 1") !=
-            std::string::npos);
-    REQUIRE(backend_text->find("m_filter_chain->handle_resize(m_swapchain_extent)") !=
-            std::string::npos);
+    REQUIRE(backend_text->find(".destroy_after_frame = retire_after_frame") != std::string::npos);
+    REQUIRE(backend_text->find("goggles_chain_handle_resize(") != std::string::npos);
 
     const auto shutdown_pos = backend_text->find("void VulkanBackend::shutdown()");
     const auto pending_shutdown_pos =

@@ -7,6 +7,7 @@ add_library(goggles_render_chain_obj OBJECT
     framebuffer.cpp
     filter_chain_core.cpp
     filter_chain.cpp
+    filter_chain_c_api.cpp
     filter_controls.cpp
     frame_history.cpp
     downsample_pass.cpp
@@ -14,6 +15,7 @@ add_library(goggles_render_chain_obj OBJECT
 )
 
 target_include_directories(goggles_render_chain_obj PUBLIC
+    ${CMAKE_SOURCE_DIR}/src/render/chain/include
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/..
 )

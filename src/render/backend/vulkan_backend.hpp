@@ -1,5 +1,6 @@
 #pragma once
 
+#include "goggles_filter_chain.h"
 #include "vulkan_debug.hpp"
 
 #include <SDL3/SDL.h>
@@ -18,8 +19,6 @@
 #include <vector>
 
 namespace goggles::render {
-
-class FilterChain;
 
 /// @brief Settings controlling viewport scaling and pacing.
 struct RenderSettings {
@@ -174,7 +173,7 @@ private:
 
     vk::PhysicalDevice m_physical_device;
     vk::Queue m_graphics_queue;
-    std::unique_ptr<FilterChain> m_filter_chain;
+    goggles_chain_t* m_filter_chain = nullptr;
 
     vk::Instance m_instance;
     vk::Device m_device;
@@ -237,13 +236,13 @@ private:
     std::atomic<bool> m_chain_swapped{false};
 
     // Async shader reload state
-    std::unique_ptr<FilterChain> m_pending_filter_chain;
+    goggles_chain_t* m_pending_filter_chain = nullptr;
     std::filesystem::path m_pending_preset_path;
     std::atomic<bool> m_pending_chain_ready{false};
     std::future<Result<void>> m_pending_load_future;
 
     struct DeferredDestroy {
-        std::unique_ptr<FilterChain> filter_chain;
+        goggles_chain_t* filter_chain = nullptr;
         uint64_t destroy_after_frame = 0;
     };
     static constexpr size_t MAX_DEFERRED_DESTROYS = 4;

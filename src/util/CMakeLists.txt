@@ -8,6 +8,13 @@ add_library(goggles_util STATIC
     job_system.cpp
 )
 
+if(DEFINED GOGGLES_CHAIN_LIBRARY_TYPE)
+    string(TOUPPER "${GOGGLES_CHAIN_LIBRARY_TYPE}" GOGGLES_CHAIN_LIBRARY_TYPE_NORMALIZED)
+    if(GOGGLES_CHAIN_LIBRARY_TYPE_NORMALIZED STREQUAL "SHARED")
+        set_target_properties(goggles_util PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    endif()
+endif()
+
 target_include_directories(goggles_util PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )

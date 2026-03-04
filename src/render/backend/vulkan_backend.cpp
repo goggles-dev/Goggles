@@ -9,9 +9,9 @@
 #include <charconv>
 #include <cstring>
 #include <format>
-#include <render/chain/filter_chain.hpp>
-#include <render/chain/vulkan_context.hpp>
+#include <limits>
 #include <stb_image_write.h>
+#include <string_view>
 #include <thread>
 #include <util/job_system.hpp>
 #include <util/logging.hpp>
@@ -83,6 +83,158 @@ auto to_ascii_lower(std::string value) -> std::string {
 
 auto get_device_name(vk::PhysicalDevice device) -> std::string {
     return device.getProperties().deviceName.data();
+}
+
+auto to_utf8_bytes(const std::filesystem::path& path) -> std::string {
+    const auto utf8 = path.u8string();
+    return {reinterpret_cast<const char*>(utf8.c_str()), utf8.size()};
+}
+
+auto chain_status_to_error_code(goggles_chain_status_t status) -> ErrorCode {
+    switch (status) {
+    case GOGGLES_CHAIN_STATUS_INVALID_ARGUMENT:
+    case GOGGLES_CHAIN_STATUS_NOT_FOUND:
+    case GOGGLES_CHAIN_STATUS_NOT_SUPPORTED:
+        return ErrorCode::invalid_data;
+    case GOGGLES_CHAIN_STATUS_NOT_INITIALIZED:
+        return ErrorCode::vulkan_init_failed;
+    case GOGGLES_CHAIN_STATUS_PRESET_ERROR:
+        return ErrorCode::shader_load_failed;
+    case GOGGLES_CHAIN_STATUS_IO_ERROR:
+        return ErrorCode::file_read_failed;
+    case GOGGLES_CHAIN_STATUS_VULKAN_ERROR:
+        return ErrorCode::vulkan_device_lost;
+    case GOGGLES_CHAIN_STATUS_OUT_OF_MEMORY:
+    case GOGGLES_CHAIN_STATUS_RUNTIME_ERROR:
+    case GOGGLES_CHAIN_STATUS_OK:
+    default:
+        return ErrorCode::unknown_error;
+    }
+}
+
+auto make_chain_result(goggles_chain_t* chain, goggles_chain_status_t status,
+                       std::string_view context) -> Result<void> {
+    if (status == GOGGLES_CHAIN_STATUS_OK) {
+        return {};
+    }
+
+    std::string message = std::format("{}: {}", context, goggles_chain_status_to_string(status));
+    if (chain != nullptr) {
+        auto last_error = goggles_chain_error_last_info_init();
+        if (goggles_chain_error_last_info_get(chain, &last_error) == GOGGLES_CHAIN_STATUS_OK) {
+            message += std::format(" (subsystem={}, vk_result={})", last_error.subsystem_code,
+                                   last_error.vk_result);
+        }
+    }
+
+    return make_error<void>(chain_status_to_error_code(status), std::move(message));
+}
+
+auto stage_policy_mask(const FilterChainStagePolicy& policy) -> goggles_chain_stage_mask_t {
+    goggles_chain_stage_mask_t stage_mask = GOGGLES_CHAIN_STAGE_MASK_POSTCHAIN;
+    if (policy.prechain_enabled) {
+        stage_mask |= GOGGLES_CHAIN_STAGE_MASK_PRECHAIN;
+    }
+    if (policy.effect_stage_enabled) {
+        stage_mask |= GOGGLES_CHAIN_STAGE_MASK_EFFECT;
+    }
+    return stage_mask;
+}
+
+auto resolve_initial_prechain_resolution(vk::Extent2D preferred, vk::Extent2D fallback)
+    -> vk::Extent2D {
+    if (preferred.width > 0 && preferred.height > 0) {
+        return preferred;
+    }
+    if (fallback.width > 0 && fallback.height > 0) {
+        return fallback;
+    }
+    return vk::Extent2D{1u, 1u};
+}
+
+auto create_filter_chain_handle(vk::Device device, vk::PhysicalDevice physical_device,
+                                vk::Queue graphics_queue, uint32_t graphics_queue_family,
+                                vk::Format target_format, uint32_t num_sync_indices,
+                                const std::filesystem::path& shader_dir,
+                                const std::filesystem::path& cache_dir,
+                                vk::Extent2D initial_prechain_resolution,
+                                goggles_chain_t** out_chain) -> goggles_chain_status_t {
+    auto create_info = goggles_chain_vk_create_info_ex_init();
+    const auto shader_dir_utf8 = to_utf8_bytes(shader_dir);
+    const auto cache_dir_utf8 = to_utf8_bytes(cache_dir);
+
+    create_info.target_format = static_cast<VkFormat>(target_format);
+    create_info.num_sync_indices = num_sync_indices;
+    create_info.shader_dir_utf8 = shader_dir_utf8.c_str();
+    create_info.shader_dir_len = shader_dir_utf8.size();
+    create_info.cache_dir_utf8 = cache_dir_utf8.empty() ? nullptr : cache_dir_utf8.c_str();
+    create_info.cache_dir_len = cache_dir_utf8.size();
+    create_info.initial_prechain_resolution.width = initial_prechain_resolution.width;
+    create_info.initial_prechain_resolution.height = initial_prechain_resolution.height;
+
+    const goggles_chain_vk_context_t vk_context{
+        .device = static_cast<VkDevice>(device),
+        .physical_device = static_cast<VkPhysicalDevice>(physical_device),
+        .graphics_queue = static_cast<VkQueue>(graphics_queue),
+        .graphics_queue_family_index = graphics_queue_family,
+    };
+
+    return goggles_chain_create_vk_ex(&vk_context, &create_info, out_chain);
+}
+
+auto load_filter_chain_preset_handle(goggles_chain_t* chain,
+                                     const std::filesystem::path& preset_path)
+    -> goggles_chain_status_t {
+    const auto preset_path_utf8 = to_utf8_bytes(preset_path);
+    return goggles_chain_preset_load_ex(chain, preset_path_utf8.c_str(), preset_path_utf8.size());
+}
+
+auto to_chain_stage(FilterControlStage stage) -> goggles_chain_stage_t {
+    switch (stage) {
+    case FilterControlStage::prechain:
+        return GOGGLES_CHAIN_STAGE_PRECHAIN;
+    case FilterControlStage::effect:
+        return GOGGLES_CHAIN_STAGE_EFFECT;
+    }
+    return GOGGLES_CHAIN_STAGE_EFFECT;
+}
+
+auto to_filter_stage(goggles_chain_stage_t stage) -> FilterControlStage {
+    switch (stage) {
+    case GOGGLES_CHAIN_STAGE_PRECHAIN:
+        return FilterControlStage::prechain;
+    case GOGGLES_CHAIN_STAGE_EFFECT:
+    case GOGGLES_CHAIN_STAGE_POSTCHAIN:
+    default:
+        return FilterControlStage::effect;
+    }
+}
+
+auto snapshot_to_controls(const goggles_chain_control_snapshot_t* snapshot)
+    -> std::vector<FilterControlDescriptor> {
+    std::vector<FilterControlDescriptor> controls;
+    const auto* descriptors = goggles_chain_control_snapshot_get_data(snapshot);
+    const size_t count = goggles_chain_control_snapshot_get_count(snapshot);
+    controls.reserve(count);
+
+    for (size_t index = 0; index < count; ++index) {
+        const auto& descriptor = descriptors[index];
+        controls.push_back(FilterControlDescriptor{
+            .control_id = descriptor.control_id,
+            .stage = to_filter_stage(descriptor.stage),
+            .name = descriptor.name_utf8 != nullptr ? descriptor.name_utf8 : "",
+            .description = descriptor.description_utf8 != nullptr
+                               ? std::optional<std::string>{descriptor.description_utf8}
+                               : std::nullopt,
+            .current_value = descriptor.current_value,
+            .default_value = descriptor.default_value,
+            .min_value = descriptor.min_value,
+            .max_value = descriptor.max_value,
+            .step = descriptor.step,
+        });
+    }
+
+    return controls;
 }
 
 auto select_candidate_by_gpu_selector(const std::vector<PhysicalDeviceCandidate>& candidates,
@@ -513,10 +665,16 @@ void VulkanBackend::shutdown() {
                 "Shader load task still running during shutdown, waiting for completion");
         }
 
-        auto pending_result = m_pending_load_future.get();
-        if (!pending_result) {
-            GOGGLES_LOG_WARN("Pending shader load finished with error during shutdown: {}",
-                             pending_result.error().message);
+        try {
+            auto pending_result = m_pending_load_future.get();
+            if (!pending_result) {
+                GOGGLES_LOG_WARN("Pending shader load finished with error during shutdown: {}",
+                                 pending_result.error().message);
+            }
+        } catch (const std::exception& ex) {
+            GOGGLES_LOG_WARN("Pending shader load threw exception during shutdown: {}", ex.what());
+        } catch (...) {
+            GOGGLES_LOG_WARN("Pending shader load threw unknown exception during shutdown");
         }
     }
 
@@ -529,12 +687,12 @@ void VulkanBackend::shutdown() {
         }
     }
 
-    auto shutdown_chain = [](std::unique_ptr<FilterChain>& chain) {
-        if (!chain) {
-            return;
+    auto shutdown_chain = [](goggles_chain_t*& chain) {
+        const auto status = goggles_chain_destroy(&chain);
+        if (status != GOGGLES_CHAIN_STATUS_OK) {
+            GOGGLES_LOG_WARN("goggles_chain_destroy during shutdown failed: {}",
+                             goggles_chain_status_to_string(status));
         }
-        chain->shutdown();
-        chain.reset();
     };
 
     shutdown_chain(m_filter_chain);
@@ -1247,8 +1405,10 @@ auto VulkanBackend::recreate_swapchain(uint32_t width, uint32_t height, vk::Form
     VK_TRY(m_device.waitIdle(), ErrorCode::vulkan_device_lost,
            "waitIdle failed before swapchain recreation");
 
-    if (recreate_filter_chain && m_filter_chain) {
-        m_filter_chain->shutdown();
+    if (recreate_filter_chain && m_filter_chain != nullptr) {
+        const auto destroy_status = goggles_chain_destroy(&m_filter_chain);
+        GOGGLES_TRY(
+            make_chain_result(m_filter_chain, destroy_status, "Failed to destroy filter chain"));
     }
     cleanup_swapchain();
 
@@ -1258,17 +1418,21 @@ auto VulkanBackend::recreate_swapchain(uint32_t width, uint32_t height, vk::Form
         GOGGLES_TRY(init_filter_chain());
 
         if (!m_preset_path.empty()) {
-            auto result = m_filter_chain->load_preset(m_preset_path);
-            if (!result) {
+            const auto load_status = load_filter_chain_preset_handle(m_filter_chain, m_preset_path);
+            if (load_status != GOGGLES_CHAIN_STATUS_OK) {
                 GOGGLES_LOG_WARN("Failed to reload shader preset after format change: {}",
-                                 result.error().message);
+                                 goggles_chain_status_to_string(load_status));
             }
         }
 
         m_source_format = source_format;
         m_format_changed.store(true, std::memory_order_release);
-    } else if (m_filter_chain) {
-        GOGGLES_TRY(m_filter_chain->handle_resize(m_swapchain_extent));
+    } else if (m_filter_chain != nullptr) {
+        const auto resize_status = goggles_chain_handle_resize(
+            m_filter_chain, goggles_chain_extent2d_t{.width = m_swapchain_extent.width,
+                                                     .height = m_swapchain_extent.height});
+        GOGGLES_TRY(
+            make_chain_result(m_filter_chain, resize_status, "Failed to resize filter chain"));
     }
 
     m_needs_resize = false;
@@ -1475,18 +1639,24 @@ auto VulkanBackend::create_offscreen_image() -> Result<void> {
 auto VulkanBackend::init_filter_chain() -> Result<void> {
     GOGGLES_PROFILE_FUNCTION();
 
-    VulkanContext vk_ctx{.device = m_device,
-                         .physical_device = m_physical_device,
-                         .command_pool = m_command_pool,
-                         .graphics_queue = m_graphics_queue};
+    if (m_filter_chain != nullptr) {
+        const auto destroy_status = goggles_chain_destroy(&m_filter_chain);
+        if (destroy_status != GOGGLES_CHAIN_STATUS_OK) {
+            return make_error<void>(ErrorCode::unknown_error,
+                                    std::format("Failed to destroy existing filter chain: {}",
+                                                goggles_chain_status_to_string(destroy_status)));
+        }
+    }
 
-    FilterChainPaths chain_paths{
-        .shader_dir = m_shader_dir,
-        .cache_dir = m_cache_dir,
-    };
+    const auto fallback_resolution = m_headless ? m_offscreen_extent : m_swapchain_extent;
+    const auto initial_prechain_resolution =
+        resolve_initial_prechain_resolution(m_source_resolution, fallback_resolution);
 
-    m_filter_chain = GOGGLES_TRY(FilterChain::create(
-        vk_ctx, m_swapchain_format, MAX_FRAMES_IN_FLIGHT, chain_paths, m_source_resolution));
+    const auto create_status = create_filter_chain_handle(
+        m_device, m_physical_device, m_graphics_queue, m_graphics_queue_family, m_swapchain_format,
+        MAX_FRAMES_IN_FLIGHT, m_shader_dir, m_cache_dir, initial_prechain_resolution,
+        &m_filter_chain);
+    GOGGLES_TRY(make_chain_result(m_filter_chain, create_status, "Failed to create filter chain"));
 
     apply_filter_chain_policy();
     return {};
@@ -1507,10 +1677,10 @@ void VulkanBackend::load_shader_preset(const std::filesystem::path& preset_path)
         return;
     }
 
-    auto result = m_filter_chain->load_preset(preset_path);
-    if (!result) {
+    const auto load_status = load_filter_chain_preset_handle(m_filter_chain, preset_path);
+    if (load_status != GOGGLES_CHAIN_STATUS_OK) {
         GOGGLES_LOG_WARN("Failed to load shader preset '{}': {} - falling back to passthrough",
-                         preset_path.string(), result.error().message);
+                         preset_path.string(), goggles_chain_status_to_string(load_status));
     }
 }
 
@@ -1627,50 +1797,135 @@ void VulkanBackend::cleanup_imported_image() {
 }
 
 void VulkanBackend::set_prechain_resolution(uint32_t width, uint32_t height) {
-    m_source_resolution = vk::Extent2D{width, height};
-    if (m_filter_chain) {
-        m_filter_chain->set_prechain_resolution(m_source_resolution);
+    auto effective_resolution = vk::Extent2D{width, height};
+    if ((effective_resolution.width == 0) != (effective_resolution.height == 0)) {
+        const auto reference_resolution = resolve_initial_prechain_resolution(
+            m_source_resolution, m_headless ? m_offscreen_extent : m_swapchain_extent);
+        if (effective_resolution.width == 0) {
+            const auto scaled_width = (static_cast<uint64_t>(reference_resolution.width) *
+                                           static_cast<uint64_t>(effective_resolution.height) +
+                                       static_cast<uint64_t>(reference_resolution.height / 2u)) /
+                                      static_cast<uint64_t>(reference_resolution.height);
+            effective_resolution.width =
+                std::max<uint32_t>(1u, static_cast<uint32_t>(scaled_width));
+        } else {
+            const auto scaled_height = (static_cast<uint64_t>(reference_resolution.height) *
+                                            static_cast<uint64_t>(effective_resolution.width) +
+                                        static_cast<uint64_t>(reference_resolution.width / 2u)) /
+                                       static_cast<uint64_t>(reference_resolution.width);
+            effective_resolution.height =
+                std::max<uint32_t>(1u, static_cast<uint32_t>(scaled_height));
+        }
+    }
+
+    m_source_resolution = effective_resolution;
+    if (m_filter_chain != nullptr && effective_resolution.width > 0 &&
+        effective_resolution.height > 0) {
+        const auto status = goggles_chain_prechain_resolution_set(
+            m_filter_chain, goggles_chain_extent2d_t{
+                                .width = effective_resolution.width,
+                                .height = effective_resolution.height,
+                            });
+        if (status != GOGGLES_CHAIN_STATUS_OK) {
+            GOGGLES_LOG_WARN("Failed to set prechain resolution: {}",
+                             goggles_chain_status_to_string(status));
+        }
     }
 }
 
 auto VulkanBackend::get_prechain_resolution() const -> vk::Extent2D {
+    if (m_filter_chain != nullptr) {
+        goggles_chain_extent2d_t resolution{};
+        const auto status = goggles_chain_prechain_resolution_get(m_filter_chain, &resolution);
+        if (status == GOGGLES_CHAIN_STATUS_OK) {
+            return vk::Extent2D{resolution.width, resolution.height};
+        }
+    }
     return m_source_resolution;
 }
 
 auto VulkanBackend::list_filter_controls() const -> std::vector<FilterControlDescriptor> {
-    if (!m_filter_chain) {
+    if (m_filter_chain == nullptr) {
         return {};
     }
-    return m_filter_chain->list_controls();
+
+    goggles_chain_control_snapshot_t* snapshot = nullptr;
+    const auto list_status = goggles_chain_control_list(m_filter_chain, &snapshot);
+    if (list_status != GOGGLES_CHAIN_STATUS_OK) {
+        GOGGLES_LOG_WARN("Failed to list filter controls: {}",
+                         goggles_chain_status_to_string(list_status));
+        return {};
+    }
+
+    auto controls = snapshot_to_controls(snapshot);
+    const auto destroy_status = goggles_chain_control_snapshot_destroy(&snapshot);
+    if (destroy_status != GOGGLES_CHAIN_STATUS_OK) {
+        GOGGLES_LOG_WARN("Failed to destroy control snapshot: {}",
+                         goggles_chain_status_to_string(destroy_status));
+    }
+    return controls;
 }
 
 auto VulkanBackend::list_filter_controls(FilterControlStage stage) const
     -> std::vector<FilterControlDescriptor> {
-    if (!m_filter_chain) {
+    if (m_filter_chain == nullptr) {
         return {};
     }
-    return m_filter_chain->list_controls(stage);
+
+    goggles_chain_control_snapshot_t* snapshot = nullptr;
+    const auto list_status =
+        goggles_chain_control_list_stage(m_filter_chain, to_chain_stage(stage), &snapshot);
+    if (list_status != GOGGLES_CHAIN_STATUS_OK) {
+        GOGGLES_LOG_WARN("Failed to list stage filter controls: {}",
+                         goggles_chain_status_to_string(list_status));
+        return {};
+    }
+
+    auto controls = snapshot_to_controls(snapshot);
+    const auto destroy_status = goggles_chain_control_snapshot_destroy(&snapshot);
+    if (destroy_status != GOGGLES_CHAIN_STATUS_OK) {
+        GOGGLES_LOG_WARN("Failed to destroy stage control snapshot: {}",
+                         goggles_chain_status_to_string(destroy_status));
+    }
+    return controls;
 }
 
 auto VulkanBackend::set_filter_control_value(FilterControlId control_id, float value) -> bool {
-    if (!m_filter_chain) {
+    if (m_filter_chain == nullptr) {
         return false;
     }
-    return m_filter_chain->set_control_value(control_id, value);
+
+    const auto status = goggles_chain_control_set_value(m_filter_chain, control_id, value);
+    if (status != GOGGLES_CHAIN_STATUS_OK && status != GOGGLES_CHAIN_STATUS_NOT_FOUND) {
+        GOGGLES_LOG_WARN("Failed to set filter control value: {}",
+                         goggles_chain_status_to_string(status));
+    }
+    return status == GOGGLES_CHAIN_STATUS_OK;
 }
 
 auto VulkanBackend::reset_filter_control_value(FilterControlId control_id) -> bool {
-    if (!m_filter_chain) {
+    if (m_filter_chain == nullptr) {
         return false;
     }
-    return m_filter_chain->reset_control_value(control_id);
+
+    const auto status = goggles_chain_control_reset_value(m_filter_chain, control_id);
+    if (status != GOGGLES_CHAIN_STATUS_OK && status != GOGGLES_CHAIN_STATUS_NOT_FOUND) {
+        GOGGLES_LOG_WARN("Failed to reset filter control value: {}",
+                         goggles_chain_status_to_string(status));
+    }
+    return status == GOGGLES_CHAIN_STATUS_OK;
 }
 
 void VulkanBackend::reset_filter_controls() {
-    if (!m_filter_chain) {
+    if (m_filter_chain == nullptr) {
         return;
     }
-    m_filter_chain->reset_controls();
+
+    const auto status = goggles_chain_control_reset_all(m_filter_chain);
+    if (status != GOGGLES_CHAIN_STATUS_OK) {
+        GOGGLES_LOG_WARN("Failed to reset filter controls: {}",
+                         goggles_chain_status_to_string(status));
+    }
 }
 
 auto VulkanBackend::acquire_next_image() -> Result<uint32_t> {
@@ -1760,9 +2015,25 @@ auto VulkanBackend::record_render_commands(vk::CommandBuffer cmd, uint32_t image
                             vk::PipelineStageFlagBits::eColorAttachmentOutput,
                         {}, {}, {}, barriers);
 
-    m_filter_chain->record(cmd, m_import.image, m_import.view, m_import_extent,
-                           m_swapchain_image_views[image_index], m_swapchain_extent,
-                           m_current_frame, m_scale_mode, m_integer_scale);
+    auto record_info = goggles_chain_vk_record_info_init();
+    record_info.command_buffer = static_cast<VkCommandBuffer>(cmd);
+    record_info.source_image = static_cast<VkImage>(m_import.image);
+    record_info.source_view = static_cast<VkImageView>(m_import.view);
+    record_info.source_extent.width = m_import_extent.width;
+    record_info.source_extent.height = m_import_extent.height;
+    record_info.target_view = static_cast<VkImageView>(m_swapchain_image_views[image_index]);
+    record_info.target_extent.width = m_swapchain_extent.width;
+    record_info.target_extent.height = m_swapchain_extent.height;
+    record_info.frame_index = m_current_frame;
+    record_info.scale_mode =
+        m_scale_mode == ScaleMode::fit
+            ? GOGGLES_CHAIN_SCALE_MODE_FIT
+            : (m_scale_mode == ScaleMode::integer ? GOGGLES_CHAIN_SCALE_MODE_INTEGER
+                                                  : GOGGLES_CHAIN_SCALE_MODE_STRETCH);
+    record_info.integer_scale = m_integer_scale;
+
+    const auto record_status = goggles_chain_record_vk(m_filter_chain, &record_info);
+    GOGGLES_TRY(make_chain_result(m_filter_chain, record_status, "Failed to record filter chain"));
 
     if (ui_callback) {
         ui_callback(cmd, m_swapchain_image_views[image_index], m_swapchain_extent);
@@ -2075,7 +2346,6 @@ auto VulkanBackend::render(const util::ExternalImageFrame* frame,
     if (!m_filter_chain) {
         return make_error<void>(ErrorCode::vulkan_init_failed, "Filter chain not initialized");
     }
-
     ++m_frame_count;
     check_pending_chain_swap();
     cleanup_deferred_destroys();
@@ -2139,9 +2409,26 @@ auto VulkanBackend::render(const util::ExternalImageFrame* frame,
                                     vk::PipelineStageFlagBits::eColorAttachmentOutput,
                                 {}, {}, {}, barriers);
 
-            m_filter_chain->record(cmd, m_import.image, m_import.view, m_import_extent,
-                                   m_offscreen_view, m_offscreen_extent, 0, m_scale_mode,
-                                   m_integer_scale);
+            auto record_info = goggles_chain_vk_record_info_init();
+            record_info.command_buffer = static_cast<VkCommandBuffer>(cmd);
+            record_info.source_image = static_cast<VkImage>(m_import.image);
+            record_info.source_view = static_cast<VkImageView>(m_import.view);
+            record_info.source_extent.width = m_import_extent.width;
+            record_info.source_extent.height = m_import_extent.height;
+            record_info.target_view = static_cast<VkImageView>(m_offscreen_view);
+            record_info.target_extent.width = m_offscreen_extent.width;
+            record_info.target_extent.height = m_offscreen_extent.height;
+            record_info.frame_index = 0;
+            record_info.scale_mode =
+                m_scale_mode == ScaleMode::fit
+                    ? GOGGLES_CHAIN_SCALE_MODE_FIT
+                    : (m_scale_mode == ScaleMode::integer ? GOGGLES_CHAIN_SCALE_MODE_INTEGER
+                                                          : GOGGLES_CHAIN_SCALE_MODE_STRETCH);
+            record_info.integer_scale = m_integer_scale;
+
+            const auto record_status = goggles_chain_record_vk(m_filter_chain, &record_info);
+            GOGGLES_TRY(
+                make_chain_result(m_filter_chain, record_status, "Failed to record filter chain"));
         } else {
             vk::ImageMemoryBarrier barrier{};
             barrier.srcAccessMask = vk::AccessFlagBits::eNone;
@@ -2291,45 +2578,57 @@ auto VulkanBackend::reload_shader_preset(const std::filesystem::path& preset_pat
     auto swapchain_format = m_swapchain_format;
     auto device = m_device;
     auto physical_device = m_physical_device;
-    auto command_pool = m_command_pool;
     auto graphics_queue = m_graphics_queue;
+    auto graphics_queue_family = m_graphics_queue_family;
     auto source_resolution = m_source_resolution;
-    auto chain_paths = FilterChainPaths{
-        .shader_dir = m_shader_dir,
-        .cache_dir = m_cache_dir,
-    };
+    auto fallback_resolution = m_headless ? m_offscreen_extent : m_swapchain_extent;
+    auto shader_dir = m_shader_dir;
+    auto cache_dir = m_cache_dir;
     auto prechain_policy_enabled = m_prechain_policy_enabled;
     auto effect_policy_enabled = m_effect_stage_policy_enabled;
 
     m_pending_load_future = util::JobSystem::submit([=, this]() -> Result<void> {
         GOGGLES_PROFILE_SCOPE("AsyncShaderLoad");
 
-        VulkanContext vk_ctx{
-            .device = device,
-            .physical_device = physical_device,
-            .command_pool = command_pool,
-            .graphics_queue = graphics_queue,
-        };
-
-        auto chain_result = FilterChain::create(vk_ctx, swapchain_format, MAX_FRAMES_IN_FLIGHT,
-                                                chain_paths, source_resolution);
-        if (!chain_result) {
-            GOGGLES_LOG_ERROR("Failed to create filter chain: {}", chain_result.error().message);
-            return make_error<void>(chain_result.error().code, chain_result.error().message);
+        goggles_chain_t* pending_chain = nullptr;
+        const auto initial_prechain_resolution =
+            resolve_initial_prechain_resolution(source_resolution, fallback_resolution);
+        const auto create_status = create_filter_chain_handle(
+            device, physical_device, graphics_queue, graphics_queue_family, swapchain_format,
+            MAX_FRAMES_IN_FLIGHT, shader_dir, cache_dir, initial_prechain_resolution,
+            &pending_chain);
+        auto create_result =
+            make_chain_result(pending_chain, create_status, "Failed to create filter chain");
+        if (!create_result) {
+            GOGGLES_LOG_ERROR("Failed to create filter chain");
+            return create_result;
         }
 
-        chain_result.value()->set_stage_policy(prechain_policy_enabled, effect_policy_enabled);
+        auto stage_policy = goggles_chain_stage_policy_init();
+        stage_policy.enabled_stage_mask = stage_policy_mask(FilterChainStagePolicy{
+            .prechain_enabled = prechain_policy_enabled,
+            .effect_stage_enabled = effect_policy_enabled,
+        });
+        const auto policy_status = goggles_chain_stage_policy_set(pending_chain, &stage_policy);
+        auto policy_result =
+            make_chain_result(pending_chain, policy_status, "Failed to apply chain policy");
+        if (!policy_result) {
+            static_cast<void>(goggles_chain_destroy(&pending_chain));
+            return policy_result;
+        }
 
         if (!preset_path.empty()) {
-            auto load_result = chain_result.value()->load_preset(preset_path);
+            const auto load_status = load_filter_chain_preset_handle(pending_chain, preset_path);
+            auto load_result =
+                make_chain_result(pending_chain, load_status, "Failed to load shader preset");
             if (!load_result) {
-                GOGGLES_LOG_ERROR("Failed to load preset '{}': {}", preset_path.string(),
-                                  load_result.error().message);
-                return make_error<void>(load_result.error().code, load_result.error().message);
+                GOGGLES_LOG_ERROR("Failed to load preset '{}'", preset_path.string());
+                static_cast<void>(goggles_chain_destroy(&pending_chain));
+                return load_result;
             }
         }
 
-        m_pending_filter_chain = std::move(chain_result.value());
+        m_pending_filter_chain = pending_chain;
         m_pending_chain_ready.store(true, std::memory_order_release);
 
         GOGGLES_LOG_INFO("Shader preset compiled: {}",
@@ -2347,10 +2646,41 @@ void VulkanBackend::check_pending_chain_swap() {
 
     // Check if async task completed successfully
     if (m_pending_load_future.valid()) {
-        auto result = m_pending_load_future.get();
+        Result<void> result;
+        try {
+            result = m_pending_load_future.get();
+        } catch (const std::exception& ex) {
+            GOGGLES_LOG_ERROR("Async shader load threw exception: {}", ex.what());
+            if (m_pending_filter_chain != nullptr) {
+                const auto destroy_status = goggles_chain_destroy(&m_pending_filter_chain);
+                if (destroy_status != GOGGLES_CHAIN_STATUS_OK) {
+                    GOGGLES_LOG_WARN("Failed to destroy pending filter chain: {}",
+                                     goggles_chain_status_to_string(destroy_status));
+                }
+            }
+            m_pending_chain_ready.store(false, std::memory_order_release);
+            return;
+        } catch (...) {
+            GOGGLES_LOG_ERROR("Async shader load threw unknown exception");
+            if (m_pending_filter_chain != nullptr) {
+                const auto destroy_status = goggles_chain_destroy(&m_pending_filter_chain);
+                if (destroy_status != GOGGLES_CHAIN_STATUS_OK) {
+                    GOGGLES_LOG_WARN("Failed to destroy pending filter chain: {}",
+                                     goggles_chain_status_to_string(destroy_status));
+                }
+            }
+            m_pending_chain_ready.store(false, std::memory_order_release);
+            return;
+        }
         if (!result) {
             GOGGLES_LOG_ERROR("Async shader load failed: {}", result.error().message);
-            m_pending_filter_chain.reset();
+            if (m_pending_filter_chain != nullptr) {
+                const auto destroy_status = goggles_chain_destroy(&m_pending_filter_chain);
+                if (destroy_status != GOGGLES_CHAIN_STATUS_OK) {
+                    GOGGLES_LOG_WARN("Failed to destroy pending filter chain: {}",
+                                     goggles_chain_status_to_string(destroy_status));
+                }
+            }
             m_pending_chain_ready.store(false, std::memory_order_release);
             return;
         }
@@ -2358,21 +2688,44 @@ void VulkanBackend::check_pending_chain_swap() {
 
     // Active runtime ownership stays in the filter boundary.
     // The host keeps only temporary retirement ownership until it is safe to destroy.
+    const uint64_t retire_delay = MAX_FRAMES_IN_FLIGHT + 1u;
+    const uint64_t retire_after_frame =
+        m_frame_count > (std::numeric_limits<uint64_t>::max() - retire_delay)
+            ? std::numeric_limits<uint64_t>::max()
+            : m_frame_count + retire_delay;
+
     if (m_deferred_count < MAX_DEFERRED_DESTROYS) {
         m_deferred_destroys[m_deferred_count++] = {
-            .filter_chain = std::move(m_filter_chain),
-            .destroy_after_frame = m_frame_count + MAX_FRAMES_IN_FLIGHT + 1,
+            .filter_chain = m_filter_chain,
+            .destroy_after_frame = retire_after_frame,
         };
     } else {
         GOGGLES_LOG_WARN("Deferred destroy queue full, destroying immediately");
-        m_filter_chain.reset();
+        wait_all_frames();
+        if (m_filter_chain != nullptr) {
+            const auto destroy_status = goggles_chain_destroy(&m_filter_chain);
+            if (destroy_status != GOGGLES_CHAIN_STATUS_OK) {
+                GOGGLES_LOG_WARN("Failed to destroy active filter chain: {}",
+                                 goggles_chain_status_to_string(destroy_status));
+            }
+        }
     }
 
     // Swap in the new chain/runtime boundary.
-    m_filter_chain = std::move(m_pending_filter_chain);
+    m_filter_chain = m_pending_filter_chain;
+    m_pending_filter_chain = nullptr;
     apply_filter_chain_policy();
-    if (m_filter_chain) {
-        m_filter_chain->set_prechain_resolution(m_source_resolution);
+    if (m_filter_chain != nullptr && m_source_resolution.width > 0 &&
+        m_source_resolution.height > 0) {
+        const auto set_status = goggles_chain_prechain_resolution_set(
+            m_filter_chain, goggles_chain_extent2d_t{
+                                .width = m_source_resolution.width,
+                                .height = m_source_resolution.height,
+                            });
+        if (set_status != GOGGLES_CHAIN_STATUS_OK) {
+            GOGGLES_LOG_WARN("Failed to reapply prechain resolution after swap: {}",
+                             goggles_chain_status_to_string(set_status));
+        }
     }
     m_preset_path = m_pending_preset_path;
     m_pending_chain_ready.store(false, std::memory_order_release);
@@ -2387,10 +2740,15 @@ void VulkanBackend::cleanup_deferred_destroys() {
     for (size_t i = 0; i < m_deferred_count; ++i) {
         if (m_frame_count >= m_deferred_destroys[i].destroy_after_frame) {
             GOGGLES_LOG_DEBUG("Destroying deferred filter chain");
-            m_deferred_destroys[i] = {};
+            const auto destroy_status = goggles_chain_destroy(&m_deferred_destroys[i].filter_chain);
+            if (destroy_status != GOGGLES_CHAIN_STATUS_OK) {
+                GOGGLES_LOG_WARN("Failed to destroy deferred filter chain: {}",
+                                 goggles_chain_status_to_string(destroy_status));
+            }
+            m_deferred_destroys[i].destroy_after_frame = 0;
         } else {
             if (write_idx != i) {
-                m_deferred_destroys[write_idx] = std::move(m_deferred_destroys[i]);
+                m_deferred_destroys[write_idx] = m_deferred_destroys[i];
             }
             ++write_idx;
         }
@@ -2405,10 +2763,20 @@ void VulkanBackend::set_filter_chain_policy(const FilterChainStagePolicy& policy
 }
 
 void VulkanBackend::apply_filter_chain_policy() {
-    if (!m_filter_chain) {
+    if (m_filter_chain == nullptr) {
         return;
     }
-    m_filter_chain->set_stage_policy(m_prechain_policy_enabled, m_effect_stage_policy_enabled);
+
+    auto policy = goggles_chain_stage_policy_init();
+    policy.enabled_stage_mask = stage_policy_mask(FilterChainStagePolicy{
+        .prechain_enabled = m_prechain_policy_enabled,
+        .effect_stage_enabled = m_effect_stage_policy_enabled,
+    });
+    const auto status = goggles_chain_stage_policy_set(m_filter_chain, &policy);
+    if (status != GOGGLES_CHAIN_STATUS_OK) {
+        GOGGLES_LOG_WARN("Failed to apply filter-chain stage policy: {}",
+                         goggles_chain_status_to_string(status));
+    }
 }
 
 } // namespace goggles::render

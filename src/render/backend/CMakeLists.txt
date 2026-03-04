@@ -7,6 +7,7 @@ add_library(goggles_render_backend_obj OBJECT
 )
 
 target_include_directories(goggles_render_backend_obj PUBLIC
+    ${CMAKE_SOURCE_DIR}/src/render/chain/include
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/..
 )
