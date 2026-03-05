@@ -1,0 +1,6 @@
+---
+InheritParentConfig: true
+Checks: >
+  -modernize-macro-to-enum,
+  -modernize-use-using,
+  -readability-identifier-naming

@@ -243,14 +243,20 @@ auto ShaderRuntime::create(const std::filesystem::path& cache_dir) -> ResultPtr<
                                                     "Failed to create Slang GLSL session");
     }
 
-    std::error_code ec;
-    std::filesystem::create_directories(runtime->m_cache_dir, ec);
-    if (ec) {
-        GOGGLES_LOG_WARN("Failed to create shader cache directory: {}", ec.message());
+    if (runtime->is_disk_cache_enabled()) {
+        std::error_code ec;
+        std::filesystem::create_directories(runtime->m_cache_dir, ec);
+        if (ec) {
+            GOGGLES_LOG_WARN("Failed to create shader cache directory: {}", ec.message());
+        }
+
+        GOGGLES_LOG_INFO("ShaderRuntime initialized (dual session: HLSL + GLSL), cache: {}",
+                         runtime->m_cache_dir.string());
+    } else {
+        GOGGLES_LOG_INFO("ShaderRuntime initialized (dual session: HLSL + GLSL), "
+                         "disk cache disabled");
     }
 
-    GOGGLES_LOG_INFO("ShaderRuntime initialized (dual session: HLSL + GLSL), cache: {}",
-                     runtime->m_cache_dir.string());
     return make_result_ptr(std::move(runtime));
 }
 
@@ -277,20 +283,26 @@ auto ShaderRuntime::compile_shader(const std::filesystem::path& source_path,
     std::string source = buffer.str();
 
     auto source_hash = compute_source_hash(source);
-    auto cache_path = get_cache_path(source_path, entry_point);
+    const bool disk_cache_enabled = is_disk_cache_enabled();
+    const auto cache_path =
+        disk_cache_enabled ? get_cache_path(source_path, entry_point) : std::filesystem::path{};
 
-    auto cached = load_cached_spirv(cache_path, source_hash);
-    if (cached) {
-        GOGGLES_LOG_DEBUG("Loaded cached SPIR-V: {}", cache_path.filename().string());
-        return CompiledShader{.spirv = std::move(cached.value()), .entry_point = entry_point};
+    if (disk_cache_enabled) {
+        auto cached = load_cached_spirv(cache_path, source_hash);
+        if (cached) {
+            GOGGLES_LOG_DEBUG("Loaded cached SPIR-V: {}", cache_path.filename().string());
+            return CompiledShader{.spirv = std::move(cached.value()), .entry_point = entry_point};
+        }
     }
 
     auto module_name = source_path.stem().string();
     auto compiled = GOGGLES_TRY(compile_slang(module_name, source, entry_point));
 
-    auto save_result = save_cached_spirv(cache_path, source_hash, compiled);
-    if (!save_result) {
-        GOGGLES_LOG_WARN("Failed to cache SPIR-V: {}", save_result.error().message);
+    if (disk_cache_enabled) {
+        auto save_result = save_cached_spirv(cache_path, source_hash, compiled);
+        if (!save_result) {
+            GOGGLES_LOG_WARN("Failed to cache SPIR-V: {}", save_result.error().message);
+        }
     }
 
     GOGGLES_LOG_INFO("Compiled shader: {} ({})", source_path.filename().string(), entry_point);
@@ -303,6 +315,10 @@ auto ShaderRuntime::get_cache_dir() const -> std::filesystem::path {
 
 auto ShaderRuntime::get_cache_path(const std::filesystem::path& source_path,
                                    const std::string& entry_point) const -> std::filesystem::path {
+    if (!is_disk_cache_enabled()) {
+        return {};
+    }
+
     auto filename = source_path.stem().string() + "_" + entry_point + ".spv.cache";
     return get_cache_dir() / filename;
 }
@@ -630,12 +646,16 @@ auto ShaderRuntime::compile_retroarch_shader(const std::string& vertex_source,
     GOGGLES_PROFILE_FUNCTION();
 
     auto source_hash = compute_source_hash(vertex_source + fragment_source);
-    auto cache_path = get_cache_dir() / (module_name + "_ra.cache");
+    const bool disk_cache_enabled = is_disk_cache_enabled();
+    const auto cache_path = disk_cache_enabled ? get_cache_dir() / (module_name + "_ra.cache")
+                                               : std::filesystem::path{};
 
-    auto cached = load_cached_retroarch(cache_path, source_hash);
-    if (cached) {
-        GOGGLES_LOG_DEBUG("Loaded cached RetroArch shader: {}", cache_path.filename().string());
-        return std::move(cached.value());
+    if (disk_cache_enabled) {
+        auto cached = load_cached_retroarch(cache_path, source_hash);
+        if (cached) {
+            GOGGLES_LOG_DEBUG("Loaded cached RetroArch shader: {}", cache_path.filename().string());
+            return std::move(cached.value());
+        }
     }
 
     auto vertex_result = compile_glsl_with_reflection(module_name + "_vert", vertex_source, "main",
@@ -660,9 +680,11 @@ auto ShaderRuntime::compile_retroarch_shader(const std::string& vertex_source,
                                    .fragment_reflection = std::move(fragment_result->reflection)};
 
     // Save to cache
-    auto save_result = save_cached_retroarch(cache_path, source_hash, result);
-    if (!save_result) {
-        GOGGLES_LOG_WARN("Failed to cache RetroArch shader: {}", save_result.error().message);
+    if (disk_cache_enabled) {
+        auto save_result = save_cached_retroarch(cache_path, source_hash, result);
+        if (!save_result) {
+            GOGGLES_LOG_WARN("Failed to cache RetroArch shader: {}", save_result.error().message);
+        }
     }
 
     GOGGLES_LOG_INFO("Compiled RetroArch shader: {}", module_name);

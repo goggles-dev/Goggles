@@ -5,18 +5,45 @@ add_subdirectory(chain)
 add_subdirectory(shader)
 add_subdirectory(texture)
 
-add_library(goggles-filter-chain STATIC
+set(GOGGLES_CHAIN_LIBRARY_TYPE "STATIC" CACHE STRING
+    "Library type for goggles-filter-chain (STATIC or SHARED)")
+set_property(CACHE GOGGLES_CHAIN_LIBRARY_TYPE PROPERTY STRINGS STATIC SHARED)
+
+string(TOUPPER "${GOGGLES_CHAIN_LIBRARY_TYPE}" GOGGLES_CHAIN_LIBRARY_TYPE_NORMALIZED)
+if(NOT GOGGLES_CHAIN_LIBRARY_TYPE_NORMALIZED STREQUAL "STATIC" AND
+   NOT GOGGLES_CHAIN_LIBRARY_TYPE_NORMALIZED STREQUAL "SHARED")
+    message(FATAL_ERROR
+        "Invalid GOGGLES_CHAIN_LIBRARY_TYPE='${GOGGLES_CHAIN_LIBRARY_TYPE}'. Use STATIC or SHARED.")
+endif()
+
+add_library(goggles-filter-chain ${GOGGLES_CHAIN_LIBRARY_TYPE_NORMALIZED}
     $<TARGET_OBJECTS:goggles_render_chain_obj>
     $<TARGET_OBJECTS:goggles_render_shader_obj>
     $<TARGET_OBJECTS:goggles_render_texture_obj>
 )
 
-target_include_directories(goggles-filter-chain PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_SOURCE_DIR}/src
+if(GOGGLES_CHAIN_LIBRARY_TYPE_NORMALIZED STREQUAL "SHARED")
+    set_target_properties(
+        goggles_render_chain_obj
+        goggles_render_shader_obj
+        goggles_render_texture_obj
+        PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()
+
+target_include_directories(goggles-filter-chain
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src/render/chain/include>
+        $<INSTALL_INTERFACE:include>
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/src
 )
 
-target_link_libraries(goggles-filter-chain PUBLIC
+target_compile_definitions(goggles-filter-chain PRIVATE
+    $<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,SHARED_LIBRARY>:GOGGLES_CHAIN_BUILD_SHARED>
+)
+
+target_link_libraries(goggles-filter-chain PRIVATE
     goggles_util
     Vulkan::Vulkan
     slang::slang
@@ -57,3 +84,14 @@ target_compile_definitions(goggles_render PUBLIC
 goggles_enable_clang_tidy(goggles_render)
 goggles_enable_sanitizers(goggles_render)
 goggles_enable_profiling(goggles_render)
+
+install(FILES ${CMAKE_SOURCE_DIR}/src/render/chain/include/goggles_filter_chain.h
+    DESTINATION include
+)
+
+install(TARGETS goggles-filter-chain
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib
+    RUNTIME DESTINATION bin
+    INCLUDES DESTINATION include
+)

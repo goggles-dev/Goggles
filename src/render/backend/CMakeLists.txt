@@ -6,7 +6,8 @@ add_library(goggles_render_backend_obj OBJECT
     stb_image_write_impl.cpp
 )
 
-target_include_directories(goggles_render_backend_obj PUBLIC
+target_include_directories(goggles_render_backend_obj PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/render/chain/include
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/..
 )
