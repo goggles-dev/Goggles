@@ -386,9 +386,13 @@ void transition_image_layout(VkCommandBuffer command_buffer, VkImage image,
     barrier.subresourceRange.baseArrayLayer = 0u;
     barrier.subresourceRange.layerCount = 1u;
 
-    vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0u, 0u, nullptr, 0u, nullptr, 1u,
-                         &barrier);
+    VkPipelineStageFlags dst_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    if (transition.new_layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
+        dst_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    }
+
+    vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, dst_stage, 0u, 0u,
+                         nullptr, 0u, nullptr, 1u, &barrier);
 }
 
 auto create_ready_chain(const goggles_chain_vk_context_t& vk_context,
@@ -468,7 +472,10 @@ TEST_CASE("Filter chain C API lifecycle and out-param safety", "[filter_chain_c_
     REQUIRE(goggles_chain_destroy(&runtime) == GOGGLES_CHAIN_STATUS_OK);
 
     VulkanRuntimeFixture fixture;
-    REQUIRE(fixture.available());
+    if (!fixture.available()) {
+        SKIP("Skipping Vulkan-backed C API lifecycle test because no Vulkan graphics device is "
+             "available");
+    }
     const auto vk_context = fixture.context();
 
     const auto shader_root = std::filesystem::path(GOGGLES_SOURCE_DIR) / "shaders";
@@ -540,7 +547,10 @@ TEST_CASE("Filter chain C API validation matrix", "[filter_chain_c_api][validati
     }
 
     VulkanRuntimeFixture fixture;
-    REQUIRE(fixture.available());
+    if (!fixture.available()) {
+        SKIP("Skipping Vulkan-backed C API validation test because no Vulkan graphics device is "
+             "available");
+    }
     const auto vk_context = fixture.context();
 
     const auto shader_root = std::filesystem::path(GOGGLES_SOURCE_DIR) / "shaders";
@@ -633,6 +643,34 @@ TEST_CASE("Filter chain C API validation matrix", "[filter_chain_c_api][validati
     REQUIRE(goggles_chain_create_vk_ex(&vk_context, &invalid_ex, &runtime) ==
             GOGGLES_CHAIN_STATUS_INVALID_ARGUMENT);
 
+    auto no_cache_create = create_info;
+    runtime = reinterpret_cast<goggles_chain_t*>(0x1);
+    no_cache_create.cache_dir_utf8 = nullptr;
+    REQUIRE(goggles_chain_create_vk(&vk_context, &no_cache_create, &runtime) ==
+            GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(runtime != nullptr);
+    REQUIRE(goggles_chain_destroy(&runtime) == GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(runtime == nullptr);
+
+    no_cache_create = create_info;
+    runtime = reinterpret_cast<goggles_chain_t*>(0x1);
+    no_cache_create.cache_dir_utf8 = "";
+    REQUIRE(goggles_chain_create_vk(&vk_context, &no_cache_create, &runtime) ==
+            GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(runtime != nullptr);
+    REQUIRE(goggles_chain_destroy(&runtime) == GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(runtime == nullptr);
+
+    auto no_cache_create_ex = create_info_ex;
+    runtime = reinterpret_cast<goggles_chain_t*>(0x1);
+    no_cache_create_ex.cache_dir_utf8 = nullptr;
+    no_cache_create_ex.cache_dir_len = 0u;
+    REQUIRE(goggles_chain_create_vk_ex(&vk_context, &no_cache_create_ex, &runtime) ==
+            GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(runtime != nullptr);
+    REQUIRE(goggles_chain_destroy(&runtime) == GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(runtime == nullptr);
+
     goggles_chain_capabilities_t caps = goggles_chain_capabilities_init();
     caps.struct_size -= 1u;
     REQUIRE(goggles_chain_capabilities_get(&caps) == GOGGLES_CHAIN_STATUS_INVALID_ARGUMENT);
@@ -654,7 +692,10 @@ TEST_CASE("Filter chain C API snapshot contract", "[filter_chain_c_api][snapshot
     REQUIRE(goggles_chain_control_snapshot_destroy(nullptr) == GOGGLES_CHAIN_STATUS_OK);
 
     VulkanRuntimeFixture fixture;
-    REQUIRE(fixture.available());
+    if (!fixture.available()) {
+        SKIP("Skipping Vulkan-backed C API snapshot test because no Vulkan graphics device is "
+             "available");
+    }
     const auto vk_context = fixture.context();
 
     const auto shader_root = std::filesystem::path(GOGGLES_SOURCE_DIR) / "shaders";
@@ -699,7 +740,10 @@ TEST_CASE("Filter chain C API control and record validation", "[filter_chain_c_a
     }
 
     VulkanRuntimeFixture fixture;
-    REQUIRE(fixture.available());
+    if (!fixture.available()) {
+        SKIP("Skipping Vulkan-backed C API record test because no Vulkan graphics device is "
+             "available");
+    }
     const auto vk_context = fixture.context();
 
     const auto shader_root = std::filesystem::path(GOGGLES_SOURCE_DIR) / "shaders";
@@ -820,6 +864,9 @@ TEST_CASE("Filter chain C API control and record validation", "[filter_chain_c_a
     transition_image_layout(command_buffer->command_buffer, source_image->image,
                             {.old_layout = VK_IMAGE_LAYOUT_UNDEFINED,
                              .new_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL});
+    transition_image_layout(command_buffer->command_buffer, target_image->image,
+                            {.old_layout = VK_IMAGE_LAYOUT_UNDEFINED,
+                             .new_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL});
 
     auto valid_record = goggles_chain_vk_record_info_init();
     valid_record.command_buffer = command_buffer->command_buffer;

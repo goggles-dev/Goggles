@@ -60,6 +60,7 @@ public:
 
 private:
     ShaderRuntime();
+    [[nodiscard]] auto is_disk_cache_enabled() const -> bool { return !m_cache_dir.empty(); }
     [[nodiscard]] auto get_cache_path(const std::filesystem::path& source_path,
                                       const std::string& entry_point) const
         -> std::filesystem::path;

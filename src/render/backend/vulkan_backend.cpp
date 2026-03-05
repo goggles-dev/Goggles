@@ -152,6 +152,29 @@ auto resolve_initial_prechain_resolution(vk::Extent2D preferred, vk::Extent2D fa
     return vk::Extent2D{1u, 1u};
 }
 
+auto to_chain_scale_mode(ScaleMode scale_mode) -> goggles_chain_scale_mode_t {
+    return scale_mode == ScaleMode::fit
+               ? GOGGLES_CHAIN_SCALE_MODE_FIT
+               : (scale_mode == ScaleMode::integer ? GOGGLES_CHAIN_SCALE_MODE_INTEGER
+                                                   : GOGGLES_CHAIN_SCALE_MODE_STRETCH);
+}
+
+auto resolve_record_integer_scale(ScaleMode scale_mode, uint32_t integer_scale,
+                                  vk::Extent2D source_extent, vk::Extent2D target_extent)
+    -> uint32_t {
+    if (scale_mode != ScaleMode::integer || integer_scale > 0u) {
+        return integer_scale;
+    }
+
+    if (source_extent.width == 0u || source_extent.height == 0u) {
+        return 1u;
+    }
+
+    const uint32_t max_scale_x = target_extent.width / source_extent.width;
+    const uint32_t max_scale_y = target_extent.height / source_extent.height;
+    return std::max(1u, std::min(max_scale_x, max_scale_y));
+}
+
 auto create_filter_chain_handle(vk::Device device, vk::PhysicalDevice physical_device,
                                 vk::Queue graphics_queue, uint32_t graphics_queue_family,
                                 vk::Format target_format, uint32_t num_sync_indices,
@@ -2025,12 +2048,9 @@ auto VulkanBackend::record_render_commands(vk::CommandBuffer cmd, uint32_t image
     record_info.target_extent.width = m_swapchain_extent.width;
     record_info.target_extent.height = m_swapchain_extent.height;
     record_info.frame_index = m_current_frame;
-    record_info.scale_mode =
-        m_scale_mode == ScaleMode::fit
-            ? GOGGLES_CHAIN_SCALE_MODE_FIT
-            : (m_scale_mode == ScaleMode::integer ? GOGGLES_CHAIN_SCALE_MODE_INTEGER
-                                                  : GOGGLES_CHAIN_SCALE_MODE_STRETCH);
-    record_info.integer_scale = m_integer_scale;
+    record_info.scale_mode = to_chain_scale_mode(m_scale_mode);
+    record_info.integer_scale = resolve_record_integer_scale(m_scale_mode, m_integer_scale,
+                                                             m_import_extent, m_swapchain_extent);
 
     const auto record_status = goggles_chain_record_vk(m_filter_chain, &record_info);
     GOGGLES_TRY(make_chain_result(m_filter_chain, record_status, "Failed to record filter chain"));
@@ -2419,12 +2439,9 @@ auto VulkanBackend::render(const util::ExternalImageFrame* frame,
             record_info.target_extent.width = m_offscreen_extent.width;
             record_info.target_extent.height = m_offscreen_extent.height;
             record_info.frame_index = 0;
-            record_info.scale_mode =
-                m_scale_mode == ScaleMode::fit
-                    ? GOGGLES_CHAIN_SCALE_MODE_FIT
-                    : (m_scale_mode == ScaleMode::integer ? GOGGLES_CHAIN_SCALE_MODE_INTEGER
-                                                          : GOGGLES_CHAIN_SCALE_MODE_STRETCH);
-            record_info.integer_scale = m_integer_scale;
+            record_info.scale_mode = to_chain_scale_mode(m_scale_mode);
+            record_info.integer_scale = resolve_record_integer_scale(
+                m_scale_mode, m_integer_scale, m_import_extent, m_offscreen_extent);
 
             const auto record_status = goggles_chain_record_vk(m_filter_chain, &record_info);
             GOGGLES_TRY(
