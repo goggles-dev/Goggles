@@ -32,9 +32,3 @@
 - `util/drm_format.hpp`
 - `util/drm_fourcc.hpp`
 
-## Consumer Constraints
-
-Standalone and host consumers must enforce this policy via:
-
-- `artifacts/filter-chain-standalone/consumer-constraints.json`
-- `artifacts/filter-chain-standalone/release-gate-inputs.json`

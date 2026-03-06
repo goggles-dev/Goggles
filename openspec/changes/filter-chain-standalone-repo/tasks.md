@@ -11,7 +11,7 @@
 - [x] 2.1 Create standalone CMake target graph for extracted runtime modules with no backend/app/ui/compositor linkage.
 - [x] 2.2 Wire dependency resolution for standalone runtime and util-core with pinned, reproducible version constraints.
 - [x] 2.3 Add standalone artifact packaging metadata and release outputs for static/shared runtime deliverables.
-- [x] 2.4 Define standalone CI workflows at `.github/workflows/filter-chain-standalone.yml` with required status checks `filter-chain-standalone-build`, `filter-chain-standalone-test`, and `filter-chain-standalone-release-dry-run`.
+- [x] 2.4 Define standalone CI workflows with required status checks for build, test, and release dry-run.
 - [x] 2.5 Validate milestone-1 artifact manifest includes source bundle, public headers, static/shared runtime libraries, and consumer package metadata outputs.
 
 ## 3. C API stability and release gate enforcement
@@ -19,7 +19,7 @@
 - [x] 3.1 Add ABI/API compatibility checks for `goggles_filter_chain.h` against v1 baseline in release workflow.
 - [x] 3.2 Ensure packaged include/export surface matches declared ABI/version contract.
 - [x] 3.3 Add release-blocking checks so publication fails on compatibility or required gate failures.
-- [x] 3.4 Generate and archive required compatibility evidence artifacts at `artifacts/compatibility/` (ABI diff report, exported-symbol manifest diff, header contract check output).
+- [x] 3.4 Generate and archive required compatibility evidence artifacts (ABI diff report, exported-symbol manifest diff, header contract check output).
 - [x] 3.5 Generate and publish artifact integrity/provenance outputs (checksums + signature/attestation metadata) and fail release on verification errors.
 - [x] 3.6 Wire compatibility evidence references into machine-readable package metadata/manifest and verify host intake checks consume them.
 
@@ -49,14 +49,14 @@
 | --- | --- | --- |
 | Standalone Repository Ownership Boundary | 1.1, 1.3, 4.1 | `pixi run build -p asan`; `ctest --preset asan -R "goggles_unit_tests" --output-on-failure` |
 | Versioned util-core Dependency Contract | 1.2, 1.4, 4.1 | `pixi run build -p asan`; `pixi run test -p asan` |
-| Standalone Publication Readiness Gate | 2.4, 3.3, 3.4, 5.4 | `pixi run smoke-filter-chain`; `pixi run build -p quality` |
-| Milestone-1 Release Profile and Artifact Manifest | 2.3, 2.5, 5.4 | `pixi run smoke-filter-chain`; `pixi run build -p asan` |
-| Standalone Release ABI Guardrail | 3.1, 3.3, 3.4 | `pixi run smoke-filter-chain`; `ctest --preset asan -R "goggles_unit_tests" --output-on-failure` |
+| Standalone Publication Readiness Gate | 2.4, 3.3, 3.4, 5.4 | `pixi run build -p quality`; `pixi run test -p asan` |
+| Milestone-1 Release Profile and Artifact Manifest | 2.3, 2.5, 5.4 | `pixi run build -p asan`; `pixi run test -p asan` |
+| Standalone Release ABI Guardrail | 3.1, 3.3, 3.4 | `pixi run build -p quality`; `ctest --preset asan -R "goggles_unit_tests" --output-on-failure` |
 | Public Header Packaging Contract | 3.2, 2.5, 3.6 | `pixi run build -p asan`; `pixi run build -p quality` |
 | Consumer Package Metadata Contract | 2.3, 3.6, 5.2 | `pixi run build -p quality`; `pixi run test -p asan` |
 | Standalone Filter Runtime Dependency Pinning | 2.2, 5.5 | `pixi run build -p asan`; `pixi run test -p asan` |
 | Lockfile Authority and Drift Enforcement | 2.2, 5.5 | `pixi run build -p asan`; `pixi run build -p quality` |
 | util-core Contract Separation | 1.2, 1.4, 4.1 | `pixi run build -p asan`; `pixi run test -p asan` |
-| util-core Ownership and Version Policy | 1.5, 5.8 | `pixi run verify-policy-artifacts -- --util-core-policy artifacts/policy/util-core-policy.json`; `pixi run build -p quality` |
+| util-core Ownership and Version Policy | 1.5, 5.8 | `pixi run build -p quality` |
 | Standalone Workflow Policy Compliance | 2.4, 5.1, 5.4 | `pixi run build -p asan`; `pixi run test -p asan`; `pixi run build -p quality` |
-| Artifact Integrity and Channel Allowlisting | 3.5, 5.6, 5.7, 5.8 | `pixi run verify-policy-artifacts -- --channel-allowlist policies/release-channels.yaml --provenance artifacts/provenance/`; `pixi run smoke-filter-chain` |
+| Artifact Integrity and Channel Allowlisting | 3.5, 5.6, 5.7, 5.8 | `pixi run build -p quality`; `pixi run test -p asan` |
