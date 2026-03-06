@@ -29,6 +29,6 @@ build:
       EOF
 
 about:
-  homepage: https://github.com/kingstom/goggles
+  homepage: https://github.com/goggles-dev/Goggles
   license: MIT
   summary: util-core policy artifact package for standalone filter runtime constraints
