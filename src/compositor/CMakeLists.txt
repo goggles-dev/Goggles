@@ -1,7 +1,15 @@
 # Compositor subsystem
 
 add_library(goggles_compositor STATIC
+    compositor_core.cpp
+    compositor_cursor.cpp
+    compositor_focus.cpp
+    compositor_input.cpp
+    compositor_layer_shell.cpp
+    compositor_present.cpp
     compositor_server.cpp
+    compositor_xdg.cpp
+    compositor_xwayland.cpp
 )
 
 target_include_directories(goggles_compositor
