@@ -3,7 +3,7 @@ package:
   version: "0.19.2"
 
 source:
-  url: https://github.com/K1ngst0m/Goggles/releases/download/wlroots-0.19.2/wlroots-0.19.2.tar.xz
+  url: https://github.com/goggles-dev/goggles-artifacts/releases/download/wlroots-0.19.2/wlroots-0.19.2.tar.xz
   sha256: 7f7e7ead653c15a86b4df267e99cf42d03c7000bf517853ec4f96c5aac149d64
 
 build:

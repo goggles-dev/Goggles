@@ -1,6 +1,6 @@
 # Goggles
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/K1ngst0m/Goggles)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/goggles-dev/Goggles)
 
 A real-time shader post-processing tool that runs target apps inside a nested compositor and applies shader effects.
 
@@ -42,6 +42,13 @@ Build output:
 build/<preset>/
 ├── bin/goggles
 ```
+
+## Dependency Artifacts
+
+Prebuilt dependency assets consumed by Goggles package recipes are published in:
+
+- <https://github.com/goggles-dev/goggles-artifacts>
+- <https://github.com/goggles-dev/goggles-artifacts/releases>
 
 ## Usage
 
