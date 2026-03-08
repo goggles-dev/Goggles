@@ -1,5 +1,6 @@
 #include "compositor_state.hpp"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <ctime>
@@ -260,7 +261,13 @@ void CompositorState::refresh_presented_frame() {
 void CompositorState::note_active_surface_commit(wlr_surface* surface) {
     GOGGLES_PROFILE_FUNCTION();
     auto target = get_input_target(*this);
-    if (!surface || !target.root_surface || surface != target.root_surface) {
+    if (!surface || !target.root_surface) {
+        return;
+    }
+
+    const bool is_root_commit = surface == target.root_surface;
+    const bool is_active_descendant_commit = target.surface && surface == target.surface;
+    if (!is_root_commit && !is_active_descendant_commit) {
         return;
     }
 
@@ -270,20 +277,23 @@ void CompositorState::note_active_surface_commit(wlr_surface* surface) {
         reset_runtime_metrics_state(runtime_metrics, target.root_surface);
     }
 
-    if (runtime_metrics.has_last_game_commit_time) {
-        const auto delta_ms =
-            std::chrono::duration<float, std::milli>(now - runtime_metrics.last_game_commit_time)
-                .count();
-        push_runtime_metric_sample(runtime_metrics.game_frame_intervals_ms,
-                                   runtime_metrics.game_frame_interval_index, delta_ms,
-                                   runtime_metrics.game_frame_interval_count);
-        const float avg_ms = average_runtime_metric_sample(
-            runtime_metrics.game_frame_intervals_ms, runtime_metrics.game_frame_interval_count);
-        runtime_metrics.snapshot.game_fps = avg_ms > 0.0F ? 1000.0F / avg_ms : 0.0F;
+    if (is_root_commit) {
+        if (runtime_metrics.has_last_game_commit_time) {
+            const auto delta_ms = std::chrono::duration<float, std::milli>(
+                                      now - runtime_metrics.last_game_commit_time)
+                                      .count();
+            push_runtime_metric_sample(runtime_metrics.game_frame_intervals_ms,
+                                       runtime_metrics.game_frame_interval_index, delta_ms,
+                                       runtime_metrics.game_frame_interval_count);
+            const float avg_ms = average_runtime_metric_sample(
+                runtime_metrics.game_frame_intervals_ms, runtime_metrics.game_frame_interval_count);
+            runtime_metrics.snapshot.game_fps = avg_ms > 0.0F ? 1000.0F / avg_ms : 0.0F;
+        }
+
+        runtime_metrics.last_game_commit_time = now;
+        runtime_metrics.has_last_game_commit_time = true;
     }
 
-    runtime_metrics.last_game_commit_time = now;
-    runtime_metrics.has_last_game_commit_time = true;
     runtime_metrics.pending_capture_commit_time = now;
     runtime_metrics.has_pending_capture_commit_time = true;
 }
@@ -300,7 +310,28 @@ void CompositorState::reset_runtime_metrics_for_target(wlr_surface* root_surface
 auto CompositorState::get_runtime_metrics_snapshot() const
     -> util::CompositorRuntimeMetricsSnapshot {
     std::scoped_lock lock(present_mutex);
-    return runtime_metrics.snapshot;
+
+    auto snapshot = runtime_metrics.snapshot;
+    if (!runtime_metrics.has_last_game_commit_time ||
+        runtime_metrics.game_frame_interval_count == 0) {
+        return snapshot;
+    }
+
+    const float avg_ms = average_runtime_metric_sample(runtime_metrics.game_frame_intervals_ms,
+                                                       runtime_metrics.game_frame_interval_count);
+    if (avg_ms <= 0.0F) {
+        return snapshot;
+    }
+
+    const auto idle_ms =
+        std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() -
+                                                 runtime_metrics.last_game_commit_time)
+            .count();
+    if (idle_ms > std::max(avg_ms * 3.0F, 100.0F)) {
+        snapshot.game_fps = 0.0F;
+    }
+
+    return snapshot;
 }
 
 void CompositorState::render_root_surface_tree(wlr_render_pass* pass, wlr_surface* root_surface) {

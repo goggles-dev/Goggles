@@ -195,6 +195,8 @@ void CompositorState::handle_xdg_popup_commit(XdgPopupHooks* hooks) {
         }
     }
 
+    note_active_surface_commit(hooks->surface);
+
     timespec now{};
     clock_gettime(CLOCK_MONOTONIC, &now);
     wlr_surface_send_frame_done(hooks->surface, &now);
