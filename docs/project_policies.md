@@ -219,18 +219,22 @@ Per-frame real-time code paths MUST NOT:
 ### 8.1 Format and source
 
 - Config files MUST use TOML.
-- Development/testing default config MUST be `config/goggles.toml`.
+- Repository-shipped default config template MUST be `config/goggles.template.toml`.
 
 ### 8.2 Loading behavior
 
 - Config MUST be read at startup.
+- Default runtime config resolution MUST target `${XDG_CONFIG_HOME:-$HOME/.config}/goggles/goggles.toml`
+  unless an explicit config path is provided.
+- If no user config exists at the resolved runtime path, the application MAY materialize the
+  shipped template there.
 - Values MUST be validated.
 - Optional values MUST have defaults.
 - Invalid config MUST fail fast.
 
 ### 8.3 User config path
 
-User-level XDG config support MAY be added in later phases; until then, repository config is canonical.
+User-level XDG config loading is canonical.
 
 ---
 

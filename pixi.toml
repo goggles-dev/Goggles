@@ -52,7 +52,7 @@ description = "Launch app inside compositor + viewer"
 cmd = "bash scripts/task/start.sh"
 
 [tasks.profile]
-description = "Run dual-process Tracy profile session"
+description = "Capture a Goggles Tracy profile session"
 cmd = "bash scripts/task/profile.sh"
 
 [tasks.shader-fetch]
@@ -68,7 +68,7 @@ description = "Build AppImage from staged AppDir"
 cmd = "bash scripts/task/appimage_build.sh"
 
 [tasks.appimage]
-description = "Build Goggles AppImage (viewer + multiarch layer)"
+description = "Build Goggles AppImage bundle"
 cmd = "bash scripts/task/appimage.sh"
 
 [tasks.init]

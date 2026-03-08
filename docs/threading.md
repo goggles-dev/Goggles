@@ -2,149 +2,86 @@
 
 ## Purpose
 
-Defines Goggles' threading and concurrency model. The design prioritizes **latency predictability over throughput**, using a phased approach that starts simple and scales when profiling justifies complexity.
+Defines the current threading model for Goggles. The runtime optimizes for predictable frame
+latency: Vulkan submission stays on the main thread, the compositor owns its own event-loop
+thread, and background work uses `goggles::util::JobSystem` only when it can stay off the hot
+path.
 
 ## Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Main Thread                             │
-│  - Owns Vulkan device, swapchain                                │
-│  - Submits to Vulkan queues (NOT thread-safe)                   │
-│  - Coordinates jobs, handles window events                      │
+│ Main Thread                                                     │
+│ - SDL window + ImGui                                            │
+│ - VulkanBackend + FilterChain record/present                    │
+│ - Vulkan queue submission                                       │
 └─────────────────────┬───────────────────────────────────────────┘
-                      │ submit jobs
+                      │ schedule bounded background work
                       ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      Job System                                 │
-│  Phase 1: BS::thread_pool (simple dispatch)                     │
-│  Phase 2: Taskflow (dependency-aware, upgrade when needed)      │
-└─────────────────────┬───────────────────────────────────────────┘
-                      │
-        ┌─────────────┴──────────────┐
-        ▼                           ▼
-┌───────────────┐           ┌───────────────┐
-│ Worker Thread │           │ Worker Thread │
-│ - Encode      │           │ - Record cmds │
-│ - I/O tasks   │           │ - Processing  │
-└───────┬───────┘           └───────────────┘
-        │
-        │ SPSC Queue (wait-free)
-        ▼
-┌───────────────┐
-│ Frame Data    │
-│ (pre-alloc'd) │
-└───────────────┘
+│ JobSystem (`BS::thread_pool`)                                   │
+│ - async preset compile/rebuild                                  │
+│ - other non-hot-path background jobs                            │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│ Compositor Thread (`std::jthread`)                              │
+│ - wlroots / Wayland event loop                                  │
+│ - XWayland lifecycle                                            │
+│ - surface, focus, pointer-constraint, and layer-shell handling  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-## Key Components
+## Main Thread
 
-### Job System (`src/util/job_system.hpp`)
+- Owns the Vulkan device, swapchain, and render loop.
+- Records filter-chain work and presents frames.
+- Is the only thread that submits Vulkan queue work.
+- Applies completed background filter-chain rebuilds at safe synchronization points.
 
-Central thread pool for all concurrent work. Direct `std::thread` usage is prohibited for pipeline work.
+The render backend and filter-chain execution remain single-threaded by default.
 
-```cpp
-// Initialize at startup
-JobSystem::initialize(4);  // 4 workers
+## Compositor Thread
 
-// Submit work
-auto future = JobSystem::submit([]{ encode_frame(); });
+The compositor runs its wlroots display loop on a dedicated `std::jthread` owned by
+`CompositorState`.
 
-// Wait if needed
-future.wait();
-```
+- Starts and stops with compositor lifecycle management.
+- Handles Wayland and XWayland client activity.
+- Owns focus routing, pointer constraints, cursor behavior, and layer-shell interactions.
 
-### SPSC Queue (`src/util/queues.hpp`)
+This thread is an allowed exception to the render-path `JobSystem` rule because it owns an
+external event loop rather than pipeline work.
 
-Wait-free queue for inter-thread communication. All operations complete in bounded time.
+## Job System
 
-```cpp
-SPSCQueue<FrameData*> queue(16);  // capacity must be power of 2
+`goggles::util::JobSystem` wraps a global `BS::thread_pool`.
 
-// Producer
-queue.try_push(frame);  // non-blocking
+- It is the required mechanism for concurrent render or pipeline work.
+- It initializes lazily and exposes `submit`, `wait_all`, and `shutdown`.
+- The current render-path use is asynchronous shader preset rebuild in
+  `src/render/backend/filter_chain_controller.cpp`.
 
-// Consumer
-if (auto* f = queue.try_pop()) { process(*f); }
-```
+Avoid creating ad-hoc worker threads for render or pipeline tasks.
 
-## How They Connect
+## Cross-Thread Communication
 
-**Compositor Frame → Process → Encode Pipeline:**
-1. Compositor delivers frame via `ExternalImageFrame` (DMA-BUF + sync fence)
-2. SPSC queue transfers to worker (zero-copy, pointer passing)
-3. Worker processes and passes to next stage
-4. Main thread coordinates, never blocks
+- Use `util::SPSCQueue` for bounded single-producer/single-consumer handoff where that pattern
+  fits, such as compositor input and resize event queues.
+- Keep blocking synchronization out of the per-frame render path.
+- Use narrow mutex-protected shared state only where snapshotting shared compositor-presented data
+  is unavoidable.
 
-**Vulkan Command Recording (Phase 2):**
-1. Main thread creates primary command buffer
-2. Workers record secondary buffers in parallel (per-thread command pool)
-3. Main thread waits, then executes secondaries
-4. Only main thread calls `vkQueueSubmit`
+## Rules
 
-## Constraints / Decisions
-
-### Real-Time Constraints
-
-**Per-frame code (main thread) MUST NOT:**
-- Allocate memory (`new`, `malloc`)
-- Use blocking sync (`mutex`, `condition_variable`)
-- Perform I/O or syscalls
-
-**Workers SHOULD:**
-- Use pre-allocated buffers
-- Use wait-free primitives
-- Bound worst-case execution time
-
-### Performance Budgets
-
-| Operation | Budget |
-|-----------|--------|
-| End-to-end latency | <16.6ms (60fps) |
-| Main thread per-frame | <8ms CPU |
-| Job dispatch | <1µs |
-| SPSC push/pop | <100ns |
-
-### Why These Libraries
-
-| Choice | Why |
-|--------|-----|
-| BS::thread_pool | Simple, 487 LOC, <1µs dispatch, sufficient for Phase 1 |
-| Taskflow (Phase 2) | Active maintenance, 61ns overhead, dependency graphs |
-| Custom SPSC | Wait-free guarantee, 112M items/s, predictable latency |
-| No coroutines | Hidden allocations, 3-4× slower, unpredictable |
-
-### Phased Approach
-
-- **Phase 1:** Offload blocking tasks (encode, I/O) when main thread >8ms
-- **Phase 2:** Parallelize Vulkan command recording when `RecordCommands` >3ms
-- **Upgrade trigger:** Command buffers >300/frame OR dependency graph >8 wide
-
-## Usage Examples
-
-See `tests/util/test_job_system.cpp` and `tests/util/test_queues.cpp` for comprehensive examples.
-
-Quick patterns:
-
-```cpp
-// Fire-and-forget
-JobSystem::submit([data = std::move(frame)]{ save(data); });
-
-// Batch with sync
-std::vector<std::future<void>> jobs;
-for (auto& region : regions) {
-    jobs.push_back(JobSystem::submit([&]{ process(region); }));
-}
-for (auto& j : jobs) j.wait();
-
-// Pipeline queues
-SPSCQueue<Frame*> capture_to_encode(16);
-// Producer: capture_to_encode.try_push(frame);
-// Consumer: if (auto* f = capture_to_encode.try_pop()) encode(*f);
-```
+- Keep render backend and per-frame filter-chain execution single-threaded unless profiling proves
+  otherwise.
+- Only the main thread may submit Vulkan queue work.
+- Concurrent pipeline or render work must go through `goggles::util::JobSystem`.
+- External integration code outside the real-time render path may use `std::jthread` with
+  RAII-managed lifetime.
 
 ## References
 
-- [docs/project_policies.md](project_policies.md) - Threading policy (Section E)
-- [Taskflow paper](https://tsung-wei-huang.github.io/papers/tpds21-taskflow.pdf) - Performance analysis
+- [Project Policies](project_policies.md) - Section 7 threading and real-time policy
 - [Vulkan threading](https://www.khronos.org/registry/vulkan/specs/1.3/html/chap3.html#fundamentals-threadingbehavior)

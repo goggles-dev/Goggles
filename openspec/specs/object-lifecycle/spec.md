@@ -1,14 +1,13 @@
 # object-lifecycle Specification
 
 ## Purpose
-TBD - created by archiving change refactor-factory-pattern. Update Purpose after archive.
+Defines factory-based initialization and `ResultPtr<T>` lifecycle rules for major Goggles subsystems.
 ## Requirements
 ### Requirement: Factory Pattern for Complex Initialization
 Major subsystem classes with fallible initialization SHALL use static factory methods returning `ResultPtr<T>` instead of two-phase initialization (constructor + `init()`).
 
 **Applicability**: This requirement applies to core subsystem classes (backends, chains, passes, runtimes, receivers) that must be fully initialized before use. It does NOT apply to:
 - Optional/lazy-initialized components that can validly exist in inactive states
-- C API boundary code (Vulkan layer)
 - Utility classes where default construction is semantically valid
 
 #### Scenario: Successful initialization
@@ -73,4 +72,3 @@ The app orchestrator component (e.g., `goggles::app::Application`) SHALL use the
 - **WHEN** orchestrator initialization fails at any step
 - **THEN** `create(...)` SHALL return an error `ResultPtr`
 - **AND** any partially acquired resources SHALL be cleaned up automatically via RAII
-

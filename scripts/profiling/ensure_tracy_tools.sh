@@ -44,9 +44,5 @@ build_tool() {
 clone_tracy_source
 
 TRACY_CAPTURE_BIN="$(build_tool capture tracy-capture)"
-TRACY_CSVEXPORT_BIN="$(build_tool csvexport tracy-csvexport)"
-TRACY_IMPORT_CHROME_BIN="$(build_tool import tracy-import-chrome)"
 
 printf 'TRACY_CAPTURE_BIN=%q\n' "${TRACY_CAPTURE_BIN}"
-printf 'TRACY_CSVEXPORT_BIN=%q\n' "${TRACY_CSVEXPORT_BIN}"
-printf 'TRACY_IMPORT_CHROME_BIN=%q\n' "${TRACY_IMPORT_CHROME_BIN}"

@@ -84,9 +84,8 @@ See [docs/architecture.md](docs/architecture.md) for project architecture and de
 Topic-specific docs:
 - [Threading](docs/threading.md) - Concurrency model and job system
 - [DMA-BUF Sharing](docs/dmabuf_sharing.md) - Cross-process GPU buffer sharing
-- [Input Forwarding](docs/input_forwarding.md) - Forward keyboard/mouse to captured apps
 - [Filter Chain](docs/filter_chain_workflow.md) - RetroArch shader pipeline
-- [RetroArch](docs/retroarch.md) - Shader preset compatibility
+- [RetroArch](docs/retroarch.md) - Core shader preset workflow
 - [Shader Compatibility Report](docs/shader_compatibility.md) - Full compilation status for all RetroArch presets
 - [Project Policies](docs/project_policies.md) - Development rules and conventions
 - [Roadmap](ROADMAP.md) - Development pending work
