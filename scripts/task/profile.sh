@@ -48,10 +48,10 @@ Notes:
   - It writes session artifacts under build/<preset>/profiles/<timestamp-pid>/.
   - Output files:
       viewer.tracy
+      viewer_capture.log
       session.json
   - Optional tool overrides:
       GOGGLES_PROFILE_TRACY_CAPTURE_BIN
-      GOGGLES_PROFILE_TRACY_CSVEXPORT_BIN
 
 Examples:
   pixi run profile -- vkcube
@@ -181,7 +181,6 @@ VIEWER_BIN="${REPO_ROOT}/build/${PRESET}/bin/goggles"
 source <("${REPO_ROOT}/scripts/profiling/ensure_tracy_tools.sh")
 
 TRACY_CAPTURE_BIN="${GOGGLES_PROFILE_TRACY_CAPTURE_BIN:-${TRACY_CAPTURE_BIN}}"
-TRACY_CSVEXPORT_BIN="${GOGGLES_PROFILE_TRACY_CSVEXPORT_BIN:-${TRACY_CSVEXPORT_BIN}}"
 
 SESSION_ROOT="${REPO_ROOT}/build/${PRESET}/profiles"
 SESSION_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$"

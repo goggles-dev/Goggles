@@ -1,7 +1,7 @@
 # compositor-capture Specification
 
 ## Purpose
-TBD - created by archiving change add-non-vulkan-surface-present. Update Purpose after archive.
+Defines how Goggles captures compositor-managed client surfaces and exports them for viewer presentation.
 ## Requirements
 ### Requirement: Non-Vulkan Surface Presentation
 The system SHALL render a selected non-Vulkan client surface (Wayland or XWayland) into the
@@ -50,12 +50,3 @@ The compositor capture path SHALL export frames using DMA-BUF for zero-copy pres
 - **WHEN** the compositor renders a frame for the selected surface
 - **THEN** it exports a DMA-BUF with width, height, format, stride, and modifier metadata
 - **AND** the viewer imports and presents the frame without CPU readback
-
-### Requirement: Vulkan Layer Path Unchanged
-The compositor capture path SHALL NOT alter the Vulkan layer capture behavior.
-
-#### Scenario: Vulkan capture unaffected
-- **GIVEN** a Vulkan application is captured via the layer
-- **WHEN** compositor capture is enabled
-- **THEN** the Vulkan capture path continues to function as before
-

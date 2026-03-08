@@ -1,7 +1,7 @@
 # profiling Specification
 
 ## Purpose
-TBD - created by archiving change add-tracy-profiling. Update Purpose after archive.
+Defines Tracy instrumentation and the single-process profile session workflow used by Goggles.
 ## Requirements
 ### Requirement: Profiling Infrastructure
 
@@ -86,19 +86,14 @@ The system SHALL instrument shader compilation functions with profiling zones.
 - **WHEN** SPIR-V cache load or save operations execute
 - **THEN** profiling data SHALL capture I/O duration
 
-### Requirement: Capture Pipeline Instrumentation
+### Requirement: Compositor Capture Instrumentation
 
-The system SHALL instrument capture pipeline functions with minimal profiling to avoid performance impact.
+The system SHALL instrument compositor frame export with minimal profiling so frame acquisition remains visible in the viewer trace.
 
-#### Scenario: Frame capture profiling
+#### Scenario: Compositor frame export profiling
 
-- **WHEN** `CaptureManager::capture_frame()` executes
-- **THEN** profiling data SHALL capture capture operation duration
-
-#### Scenario: Capture layer hot path protection
-
-- **WHEN** `vkQueuePresentKHR` hook executes
-- **THEN** profiling overhead SHALL be minimal (entry marker only, no nested zones)
+- **WHEN** compositor frame preparation and DMA-BUF export execute
+- **THEN** profiling data SHALL capture that frame acquisition work in the viewer trace
 
 ### Requirement: CMake Build Preset
 
@@ -112,7 +107,7 @@ The system SHALL provide a CMake preset for profiling builds.
 ### Requirement: Unified Profile Session Command
 
 The system SHALL provide a profile-session command that orchestrates build, launch, capture, and
-artifact generation for dual-process Goggles profiling.
+artifact generation for a Goggles viewer profile session.
 
 #### Scenario: Start-pattern CLI for profile sessions
 
@@ -120,41 +115,19 @@ artifact generation for dual-process Goggles profiling.
 - **THEN** the command SHALL parse arguments using the same split semantics as `pixi run start`
 - **AND** it SHALL launch a profiling session without requiring manual Tracy command orchestration
 
-### Requirement: Dual Raw Trace Capture
+### Requirement: Viewer Trace Capture
 
-A profile session SHALL capture both instrumented process roles and persist separate raw traces.
+A profile session SHALL capture the Goggles viewer/compositor process and persist one raw trace.
 
-#### Scenario: Capture viewer and layer traces in one run
+#### Scenario: Capture viewer trace in one run
 
 - **WHEN** a profile session completes successfully
-- **THEN** it SHALL produce a raw trace for the viewer/compositor process
-- **AND** it SHALL produce a raw trace for the app-side layer process
+- **THEN** it SHALL produce `viewer.tracy` for the viewer/compositor process
 
-#### Scenario: Client-role mapping is explicit
+#### Scenario: Capture worker log is preserved
 
-- **WHEN** raw traces are written
-- **THEN** the session metadata SHALL record which client endpoint/process produced each trace
-
-### Requirement: Merged Single-Timeline Artifact
-
-A profile session SHALL emit one merged timeline artifact derived from both raw traces.
-
-#### Scenario: Merge success path
-
-- **WHEN** both raw traces are present and readable
-- **THEN** the system SHALL generate one merged trace file containing both process timelines
-- **AND** the merged trace SHALL be suitable for cross-process timeline inspection
-
-#### Scenario: Alignment-marker-aware merge
-
-- **WHEN** shared frame alignment markers are available in both raw traces
-- **THEN** merge SHALL align timelines using those markers before writing the merged trace
-
-#### Scenario: Alignment fallback
-
-- **WHEN** shared alignment markers are missing or insufficient
-- **THEN** merge SHALL fall back to relative-time alignment
-- **AND** the session metadata SHALL include a warning describing reduced alignment confidence
+- **WHEN** a profile session starts Tracy capture for the viewer process
+- **THEN** it SHALL persist the capture worker output alongside the session artifacts
 
 ### Requirement: Session Artifact Manifest
 
@@ -163,6 +136,5 @@ The system SHALL persist machine-readable metadata for every profile session.
 #### Scenario: Manifest contains reproducibility metadata
 
 - **WHEN** a session finishes
-- **THEN** it SHALL write a manifest describing command line, timestamps, client mapping, and artifact paths
-- **AND** it SHALL include warnings/errors encountered during capture or merge stages
-
+- **THEN** it SHALL write a manifest describing command line, timestamps, ports, client mapping, and artifact paths
+- **AND** it SHALL include exit codes and warnings encountered during capture

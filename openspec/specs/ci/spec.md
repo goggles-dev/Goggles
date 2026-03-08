@@ -85,16 +85,21 @@ The build system SHALL apply clang-tidy static analysis with per-directory confi
 
 #### Scenario: Application code with clang-tidy enabled
 - **WHEN** building with `ENABLE_CLANG_TIDY=ON`
-- **AND** the source file is in `src/app/` or `src/capture/capture_protocol.hpp`
+- **AND** the source file is outside directories with a local `.clang-tidy` override
 - **THEN** the file is analyzed with the root `.clang-tidy` configuration
 - **AND** all checks are enforced with `-warnings-as-errors`
 
-#### Scenario: Vulkan layer code with clang-tidy enabled
+#### Scenario: Generated protocol headers with clang-tidy enabled
 - **WHEN** building with `ENABLE_CLANG_TIDY=ON`
-- **AND** the source file is in `src/capture/vk_layer/`
-- **THEN** the file is analyzed with `src/capture/vk_layer/.clang-tidy`
-- **AND** naming and modernization checks are relaxed for Vulkan interop compatibility
-- **AND** safety-related checks remain enabled
+- **AND** the source file is in `src/compositor/protocol/`
+- **THEN** the file is analyzed with `src/compositor/protocol/.clang-tidy`
+- **AND** all clang-tidy checks are disabled for those generated headers
+
+#### Scenario: C filter-chain API code with clang-tidy enabled
+- **WHEN** building with `ENABLE_CLANG_TIDY=ON`
+- **AND** the source file is in `src/render/chain/api/c/`
+- **THEN** the file inherits the root `.clang-tidy` configuration
+- **AND** identifier naming and selected modernization checks are relaxed for the C-facing API surface
 
 #### Scenario: Root clang-tidy enforces project conventions
 - **WHEN** the root `.clang-tidy` is used
@@ -102,6 +107,7 @@ The build system SHALL apply clang-tidy static analysis with per-directory confi
 - **AND** enum constants MUST use `UPPER_SNAKE_CASE`
 - **AND** functions MUST use `snake_case`
 - **AND** C-style arrays are forbidden in favor of `std::array`
+<<<<<<< Updated upstream
 
 ### Requirement: Repo-Controlled Semgrep Gate
 
@@ -130,3 +136,5 @@ The CI system SHALL run a repo-controlled Semgrep scan as a blocking step in the
 - **WHEN** the CI Semgrep gate evaluates the repository
 - **THEN** it SHALL cover only the approved high-signal policy bans selected for Semgrep
 - **AND** it SHALL NOT duplicate formatting, naming, include-order, lockfile/preset, or runtime-validation checks that are owned by other tools
+=======
+>>>>>>> Stashed changes

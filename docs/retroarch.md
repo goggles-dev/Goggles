@@ -1,124 +1,64 @@
-# RetroArch Shader Support
+# RetroArch Shader Workflow
 
 ## Purpose
 
-Explains Goggles' compatibility with RetroArch shader presets (`.slangp` files), enabling CRT filters, scanlines, and other post-processing effects from the RetroArch ecosystem.
+Describes the core flow for loading and running RetroArch shader presets (`.slangp`) in Goggles.
 
-## Overview
+## Workflow
 
-```mermaid
-flowchart TB
-  Frame["Captured frame<br/>(imported image)"] --> Chain["FilterChain"]
+### 1. Select a preset
 
-  subgraph Passes["Filter passes (0..N)"]
-    direction TB
-    P0["FilterPass 0"] --> P1["FilterPass 1"] --> PMore["…"] --> PN["FilterPass N"]
-  end
+Goggles reads a preset path from config or from the runtime UI. If no preset is selected, the
+effect stage stays in passthrough mode.
 
-  Chain --> Passes --> Out["OutputPass"] --> Swap["Viewer swapchain"]
+### 2. Parse the preset
 
-  Inputs["Textures available to passes:<br/>Source, Original,<br/>OriginalHistory#, PassOutput#, PassFeedback#"]
-  Inputs -.-> Passes
-```
+The preset loader reads the `.slangp` file, resolves referenced shader files, and collects pass
+metadata such as scaling, filtering, feedback, and history requirements.
 
-A filter chain is a sequence of shader passes. Each pass:
-- Renders a fullscreen quad applying shader effects
-- Can access any previous pass output
-- Can access the original captured frame
+### 3. Preprocess shader sources
 
-## Key Concepts
+RetroArch shader sources are preprocessed before compilation:
 
-### Preset Format (`.slangp`)
+- resolve includes
+- extract `#pragma parameter` metadata
+- split combined `.slang` files into vertex and fragment stages
 
-```ini
-shaders = 2
+### 4. Compile and reflect
 
-shader0 = shaders/pass0.slang
-scale_type0 = source
-scale0 = 2.0
-filter_linear0 = false
+Goggles compiles the generated GLSL through Slang, then reflects resource bindings and push
+constants for each pass.
 
-shader1 = shaders/final.slang
-# No scale = outputs to backbuffer
-```
+### 5. Build the filter chain
 
-### Shader Format (`.slang`)
+The filter chain allocates the pass sequence, intermediate framebuffers, and any history or
+feedback resources required by the preset.
 
-RetroArch uses Vulkan GLSL with custom pragmas:
+### 6. Record passes each frame
 
-```glsl
-#version 450
+For every frame, the chain records passes in order and binds the semantics expected by RetroArch
+shaders, including:
 
-layout(push_constant) uniform Push {
-    vec4 SourceSize;
-    vec4 OutputSize;
-    uint FrameCount;
-} params;
+- `Source`
+- `Original`
+- `OriginalHistory#`
+- `PassOutput#`
+- `PassFeedback#`
 
-#pragma parameter BRIGHTNESS "Brightness" 1.0 0.5 2.0 0.05
+### 7. Present the result
 
-#pragma stage vertex
-void main() { /* vertex shader */ }
+The output pass writes the final processed image to the viewer swapchain.
 
-#pragma stage fragment
-void main() { /* fragment shader */ }
-```
+## Runtime Controls
 
-### Standard Semantics
+The ImGui overlay can:
 
-| Semantic | Type | Description |
-|----------|------|-------------|
-| `SourceSize` | vec4 | `[width, height, 1/width, 1/height]` of input |
-| `OutputSize` | vec4 | Output dimensions |
-| `OriginalSize` | vec4 | Original captured frame size |
-| `FrameCount` | uint | Frame counter for animations |
-| `MVP` | mat4 | Model-View-Projection matrix |
-| `Source` | sampler2D | Previous pass output (or original for pass 0) |
-| `Original` | sampler2D | Original captured frame |
-| `OriginalHistory#` | sampler2D | Previous frames (e.g., `OriginalHistory1` is 1 frame ago) |
-| `PassOutput#` | sampler2D | Output of pass `#` (for referencing earlier passes) |
-| `PassFeedback#` | sampler2D | Feedback buffer for pass `#` (previous frame output) |
-
-## Key Components
-
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| PresetParser | `src/render/chain/preset_parser.*` | Parse `.slangp` files |
-| RetroArchPreprocessor | `src/render/shader/retroarch_preprocessor.*` | Split stages, extract parameters |
-| ShaderRuntime | `src/render/shader/shader_runtime.*` | Compile GLSL to SPIR-V (via Slang) |
-| FilterPass | `src/render/chain/filter_pass.*` | Render single pass |
-| FilterChain | `src/render/chain/filter_chain.*` | Orchestrate multi-pass rendering |
-| SemanticBinder | `src/render/chain/semantic_binder.hpp` | Populate UBO/push constants |
-
-## Compiler Strategy
-
-**Decision:** Use Slang compiler with GLSL mode (not glslang).
-
-**Rationale:**
-- Single compiler for both native HLSL and RetroArch GLSL shaders
-- Slang is actively maintained by NVIDIA/Khronos
-- Avoids maintaining two compiler integrations
-
-**Processing Pipeline:**
-```mermaid
-flowchart TB
-  Slang[".slang shader"] --> Includes["Resolve includes"]
-  Includes --> Pragmas["Extract pragmas (parameters, metadata)"]
-  Pragmas --> Split["Split vertex/fragment stages"]
-  Split --> Compile["Compile (Slang) → SPIR-V"]
-  Compile --> Reflect["Reflect → resource + push-constant layout"]
-```
-
-## Usage Example
-
-See `docs/filter_chain_workflow.md` for the render-loop flow and how presets map to passes.
-
-## Current Limitations
-
-- No runtime parameter adjustment UI
+- enable or disable the effect stage
+- apply or reload presets
+- adjust exposed shader parameters at runtime
 
 ## References
 
-- [docs/filter_chain_workflow.md](filter_chain_workflow.md) - Filter chain execution details
+- [Filter Chain](filter_chain_workflow.md) - Detailed render-pass flow
+- [Shader Compatibility Report](shader_compatibility.md) - Batch compilation status
 - [RetroArch Slang spec](https://docs.libretro.com/development/shader/slang-shaders/)
-- [slang-shaders repo](https://github.com/libretro/slang-shaders) - Shader collection
