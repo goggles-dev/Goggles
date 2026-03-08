@@ -44,7 +44,10 @@ EXPECTED_FINDINGS = {
         ],
     },
     "goggles-no-discarded-vulkan-result": {
-        "positive": ["src/render/positive_discarded_wait_idle.cpp"],
+        "positive": [
+            "src/render/positive_discarded_wait_idle.cpp",
+            "src/render/positive_discarded_wait_idle_arrow.cpp",
+        ],
         "negative": ["src/render/negative_discarded_wait_idle.cpp"],
     },
     "goggles-no-render-std-thread": {
@@ -108,7 +111,22 @@ def scan_fixture(relative_fixture_path: str) -> set[str]:
             raise RuntimeError(
                 f"semgrep produced no JSON output for {relative_fixture_path}\nSTDERR:\n{completed.stderr}"
             )
-        results = json.loads(completed.stdout)
+        try:
+            results = json.loads(completed.stdout)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(
+                f"semgrep produced invalid JSON for {relative_fixture_path}\n"
+                f"STDERR:\n{completed.stderr}\nSTDOUT:\n{completed.stdout}"
+            ) from exc
+        errors = results.get("errors", [])
+        if completed.returncode != 0 or errors:
+            raise RuntimeError(
+                f"semgrep scan failed for {relative_fixture_path}\n"
+                f"target={relative_target}\n"
+                f"returncode={completed.returncode}\n"
+                f"STDERR:\n{completed.stderr}\n"
+                f"JSON errors:\n{json.dumps(errors, indent=2, sort_keys=True)}"
+            )
         rule_ids: set[str] = set()
         for entry in results.get("results", []):
             if entry["path"] == relative_target:

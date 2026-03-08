@@ -8,7 +8,9 @@ struct FramebufferOwner final {
 
 void destroy_framebuffer() {
     FramebufferOwner owner{.framebuffer = nullptr};
-    delete owner.framebuffer;
+    const bool owns_framebuffer = true;
+    if (owns_framebuffer)
+        delete owner.framebuffer;
 }
 
 } // namespace goggles::render

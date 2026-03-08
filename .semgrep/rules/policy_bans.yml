@@ -51,7 +51,7 @@ rules:
     severity: ERROR
     languages:
       - cpp
-    pattern-regex: '(?m)^\s*delete(?:\s*\[\s*\])?\s+(?:\([^;\n]+\)|[A-Za-z_][A-Za-z0-9_]*(?:\s*(?:->|\.)\s*[A-Za-z_][A-Za-z0-9_]*)*)\s*;'
+    pattern-regex: 'delete(?:\s*\[\s*\])?\s+(?:\([^;\n]+\)|[A-Za-z_][A-Za-z0-9_]*(?:\s*(?:->|\.)\s*[A-Za-z_][A-Za-z0-9_]*)*)\s*;'
     paths:
       include:
         - /src/**/*.cpp
@@ -83,7 +83,7 @@ rules:
     severity: ERROR
     languages:
       - cpp
-    pattern-regex: 'static_cast<void>\([^;\n]*\.waitIdle\(\)\)'
+    pattern-regex: '(?s)static_cast<void>\s*\(.*?(?:\.|->)\s*waitIdle\s*\(\).*?\)'
     paths:
       include:
         - /src/render/**/*.cpp
