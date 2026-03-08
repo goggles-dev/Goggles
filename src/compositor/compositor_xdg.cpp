@@ -274,6 +274,8 @@ void CompositorState::handle_xdg_surface_commit(XdgToplevelHooks* hooks) {
         hooks->sent_configure = true;
     }
 
+    note_active_surface_commit(hooks->surface);
+
     timespec now{};
     clock_gettime(CLOCK_MONOTONIC, &now);
     wlr_surface_send_frame_done(hooks->surface, &now);
