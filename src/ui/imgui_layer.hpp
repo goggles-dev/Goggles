@@ -94,6 +94,7 @@ using PreChainParameterCallback =
 using PreChainScaleModeCallback = std::function<void(ScaleMode mode, uint32_t integer_scale)>;
 using SurfaceSelectCallback = std::function<void(uint32_t surface_id)>;
 using SurfaceFilterToggleCallback = std::function<void(uint32_t surface_id, bool enabled)>;
+using TargetFpsChangeCallback = std::function<void(uint32_t target_fps)>;
 
 /// @brief ImGui overlay layer for shader control and debug widgets.
 class ImGuiLayer {
@@ -151,6 +152,10 @@ public:
     void set_prechain_scale_mode_callback(PreChainScaleModeCallback callback);
     /// @brief Updates compositor-provided runtime metrics shown in the performance panel.
     void set_runtime_metrics(util::CompositorRuntimeMetricsSnapshot metrics);
+    /// @brief Updates the effective session pacing target shown in the Application window.
+    void set_target_fps(uint32_t target_fps);
+    /// @brief Sets the callback invoked when the runtime pacing target changes.
+    void set_target_fps_change_callback(TargetFpsChangeCallback callback);
 
     /// @brief Returns mutable UI state (owned by this layer).
     [[nodiscard]] auto state() -> ShaderControlState& { return m_state; }
@@ -211,8 +216,11 @@ private:
     PreChainScaleModeCallback m_on_prechain_scale_mode;
     SurfaceSelectCallback m_on_surface_select;
     SurfaceFilterToggleCallback m_on_surface_filter_toggle;
+    TargetFpsChangeCallback m_on_target_fps_change;
     std::vector<input::SurfaceInfo> m_surfaces;
     util::CompositorRuntimeMetricsSnapshot m_runtime_metrics;
+    uint32_t m_target_fps = 60;
+    uint32_t m_last_capped_target_fps = 60;
     float m_last_display_scale = 1.0F;
     bool m_global_visible = true;
     bool m_initialized = false;

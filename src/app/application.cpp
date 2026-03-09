@@ -97,7 +97,7 @@ auto Application::init_vulkan_backend(const Config& config, const util::AppDirs&
     render::RenderSettings render_settings{
         .scale_mode = config.render.scale_mode,
         .integer_scale = config.render.integer_scale,
-        .target_fps = config.render.target_fps,
+        .target_fps = m_target_fps,
         .gpu_selector = config.render.gpu_selector,
         .source_width = config.render.source_width,
         .source_height = config.render.source_height,
@@ -125,6 +125,9 @@ auto Application::init_imgui_layer(const util::AppDirs& app_dirs) -> Result<void
     };
 
     m_imgui_layer = GOGGLES_MUST(ui::ImGuiLayer::create(m_window, imgui_config, app_dirs));
+    m_imgui_layer->set_target_fps(m_target_fps);
+    m_imgui_layer->set_target_fps_change_callback(
+        [this](uint32_t target_fps) { set_target_fps(target_fps); });
     GOGGLES_LOG_INFO("ImGui layer initialized");
     return Result<void>{};
 }
@@ -183,6 +186,7 @@ auto Application::init_compositor_server(const util::AppDirs& app_dirs) -> Resul
     m_compositor_server = GOGGLES_MUST(input::CompositorServer::create());
     GOGGLES_LOG_INFO("Compositor server: DISPLAY={} WAYLAND_DISPLAY={}",
                      m_compositor_server->x11_display(), m_compositor_server->wayland_display());
+    set_target_fps(m_target_fps);
 
     m_imgui_layer->set_surface_select_callback(
         [app_ptr = this, compositor = m_compositor_server.get()](uint32_t surface_id) {
@@ -205,6 +209,7 @@ auto Application::init_compositor_server_headless(const util::AppDirs& app_dirs)
     m_compositor_server = GOGGLES_MUST(input::CompositorServer::create());
     GOGGLES_LOG_INFO("Compositor server (headless): DISPLAY={} WAYLAND_DISPLAY={}",
                      m_compositor_server->x11_display(), m_compositor_server->wayland_display());
+    set_target_fps(m_target_fps);
     // No imgui callbacks in headless mode.
     return Result<void>{};
 }
@@ -212,6 +217,7 @@ auto Application::init_compositor_server_headless(const util::AppDirs& app_dirs)
 auto Application::create(const Config& config, const util::AppDirs& app_dirs)
     -> ResultPtr<Application> {
     auto app = std::unique_ptr<Application>(new Application());
+    app->m_target_fps = config.render.target_fps;
 
     GOGGLES_MUST(app->init_sdl());
     GOGGLES_MUST(app->init_vulkan_backend(config, app_dirs));
@@ -225,11 +231,12 @@ auto Application::create(const Config& config, const util::AppDirs& app_dirs)
 auto Application::create_headless(const Config& config, const util::AppDirs& app_dirs)
     -> ResultPtr<Application> {
     auto app = std::unique_ptr<Application>(new Application());
+    app->m_target_fps = config.render.target_fps;
 
     render::RenderSettings render_settings{
         .scale_mode = config.render.scale_mode,
         .integer_scale = config.render.integer_scale,
-        .target_fps = config.render.target_fps,
+        .target_fps = app->m_target_fps,
         .gpu_selector = config.render.gpu_selector,
         .source_width = config.render.source_width,
         .source_height = config.render.source_height,
@@ -795,6 +802,23 @@ auto Application::x11_display() const -> std::string {
 
 auto Application::wayland_display() const -> std::string {
     return m_compositor_server ? m_compositor_server->wayland_display() : "";
+}
+
+auto Application::target_fps() const -> uint32_t {
+    return m_target_fps;
+}
+
+void Application::set_target_fps(uint32_t target_fps) {
+    m_target_fps = target_fps;
+    if (m_imgui_layer) {
+        m_imgui_layer->set_target_fps(target_fps);
+    }
+    if (m_compositor_server) {
+        m_compositor_server->set_target_fps(target_fps);
+    }
+    if (m_vulkan_backend) {
+        m_vulkan_backend->set_target_fps(target_fps);
+    }
 }
 
 auto Application::gpu_index() const -> uint32_t {

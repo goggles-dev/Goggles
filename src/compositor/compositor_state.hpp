@@ -6,6 +6,7 @@
 #include "compositor_targets.hpp"
 
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -96,6 +97,15 @@ struct CursorFrame {
     uint32_t delay_ms = 0;
 };
 
+struct CapturePacingState {
+    RuntimeMetricsState::CaptureTarget capture_target{};
+    wlr_surface* callback_surface = nullptr;
+    std::chrono::steady_clock::time_point last_dispatch_time;
+    bool has_capture_target = false;
+    bool has_pending_frame = false;
+    bool has_last_dispatch_time = false;
+};
+
 struct Listeners {
     CompositorState* state = nullptr;
 
@@ -123,6 +133,7 @@ struct CompositorState {
     wl_display* display = nullptr;
     wl_event_loop* event_loop = nullptr;
     wl_event_source* event_source = nullptr;
+    wl_event_source* pacing_timer_source = nullptr;
     wlr_backend* backend = nullptr;
     wlr_renderer* renderer = nullptr;
     wlr_allocator* allocator = nullptr;
@@ -166,6 +177,7 @@ struct CompositorState {
     mutable std::mutex present_mutex;
     std::optional<util::ExternalImageFrame> presented_frame;
     RuntimeMetricsState runtime_metrics;
+    CapturePacingState capture_pacing;
     Listeners listeners;
     uint32_t present_width = 0;
     uint32_t present_height = 0;
@@ -174,6 +186,7 @@ struct CompositorState {
     static constexpr uint32_t NO_FOCUS_TARGET = 0;
     std::atomic<uint32_t> pending_focus_target{NO_FOCUS_TARGET};
     std::atomic<bool> cursor_visible{true};
+    std::atomic<uint32_t> target_fps{60};
     bool cursor_initialized = false;
     std::atomic<bool> pointer_locked{false};
     std::atomic<bool> present_reset_requested{false};
@@ -258,6 +271,9 @@ struct CompositorState {
     void update_presented_frame(wlr_surface* surface);
     void refresh_presented_frame();
     void note_active_surface_commit(wlr_surface* surface);
+    void schedule_capture_pacing(wlr_surface* surface);
+    void process_capture_pacing();
+    void arm_capture_pacing_timer(std::chrono::steady_clock::time_point deadline);
     void reset_runtime_metrics_for_target(const RuntimeMetricsState::CaptureTarget& capture_target);
     [[nodiscard]] auto get_runtime_metrics_snapshot() const
         -> util::CompositorRuntimeMetricsSnapshot;

@@ -127,8 +127,10 @@ public:
     [[nodiscard]] auto get_captured_extent() const -> vk::Extent2D {
         return m_external_frame_importer.import_extent;
     }
+    [[nodiscard]] auto target_fps() const -> uint32_t { return m_render_output.target_fps; }
     [[nodiscard]] auto get_scale_mode() const -> ScaleMode { return m_scale_mode; }
     [[nodiscard]] auto get_integer_scale() const -> uint32_t { return m_integer_scale; }
+    void set_target_fps(uint32_t target_fps) { update_target_fps(target_fps); }
     void set_scale_mode(ScaleMode mode) { m_scale_mode = mode; }
     void set_integer_scale(uint32_t scale) { m_integer_scale = scale; }
     [[nodiscard]] auto gpu_index() const -> uint32_t { return m_vulkan_context.gpu_index; }

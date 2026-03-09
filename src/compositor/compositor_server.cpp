@@ -103,6 +103,15 @@ auto CompositorServer::wayland_display() const -> std::string {
     return m_impl->state.wayland_socket_name;
 }
 
+auto CompositorServer::target_fps() const -> uint32_t {
+    return m_impl->state.target_fps.load(std::memory_order_acquire);
+}
+
+void CompositorServer::set_target_fps(uint32_t target_fps) {
+    m_impl->state.target_fps.store(target_fps, std::memory_order_release);
+    m_impl->state.wake_event_loop();
+}
+
 auto CompositorServer::get_runtime_metrics_snapshot() const
     -> util::CompositorRuntimeMetricsSnapshot {
     return m_impl->state.get_runtime_metrics_snapshot();

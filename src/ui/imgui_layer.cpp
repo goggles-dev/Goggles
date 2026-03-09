@@ -415,6 +415,17 @@ void ImGuiLayer::set_runtime_metrics(util::CompositorRuntimeMetricsSnapshot metr
     m_runtime_metrics = metrics;
 }
 
+void ImGuiLayer::set_target_fps(uint32_t target_fps) {
+    m_target_fps = target_fps;
+    if (target_fps != 0) {
+        m_last_capped_target_fps = target_fps;
+    }
+}
+
+void ImGuiLayer::set_target_fps_change_callback(TargetFpsChangeCallback callback) {
+    m_on_target_fps_change = std::move(callback);
+}
+
 void ImGuiLayer::set_surfaces(std::vector<input::SurfaceInfo> surfaces) {
     m_surfaces = std::move(surfaces);
 }
@@ -765,6 +776,39 @@ void ImGuiLayer::draw_app_management() {
             draw_runtime_metric_plot("##compositor_latency_plot",
                                      m_runtime_metrics.compositor_latency_history_ms.data(),
                                      m_runtime_metrics.compositor_latency_history_count, nullptr);
+            ImGui::Separator();
+            if (m_target_fps == 0) {
+                ImGui::Text("Effective Pacing Target: Uncapped");
+            } else {
+                ImGui::Text("Effective Pacing Target: %u FPS", m_target_fps);
+            }
+
+            bool uncapped = m_target_fps == 0;
+            if (ImGui::Checkbox("Uncapped", &uncapped)) {
+                const uint32_t updated_target_fps = uncapped ? 0u : m_last_capped_target_fps;
+                set_target_fps(updated_target_fps);
+                if (m_on_target_fps_change) {
+                    m_on_target_fps_change(updated_target_fps);
+                }
+            }
+
+            int capped_target_fps =
+                static_cast<int>(m_target_fps == 0 ? m_last_capped_target_fps : m_target_fps);
+            ImGui::BeginDisabled(uncapped);
+            ImGui::SetNextItemWidth(120);
+            if (ImGui::InputInt("Target FPS", &capped_target_fps, 0, 0)) {
+                const uint32_t updated_target_fps =
+                    static_cast<uint32_t>(std::clamp(capped_target_fps, 1, 1000));
+                set_target_fps(updated_target_fps);
+                if (m_on_target_fps_change) {
+                    m_on_target_fps_change(updated_target_fps);
+                }
+            }
+            ImGui::EndDisabled();
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip(
+                    "Updates the live session pacing target for viewer and compositor");
+            }
         }
 
         if (ImGui::CollapsingHeader("Window Management", ImGuiTreeNodeFlags_DefaultOpen)) {
