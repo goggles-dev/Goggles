@@ -32,26 +32,17 @@ The CI system SHALL automatically format code using the Pixi-managed clang-forma
 
 ### Requirement: Unified Clang-Format via Pixi
 
-The project SHALL use a pixi-managed clang-format to ensure consistent formatting across all contributors regardless of their local IDE or system toolchain.
+The project SHALL use Pixi-managed formatting tools to ensure consistent formatting across all contributors regardless of their local system toolchain.
 
-#### Scenario: IDE configuration uses pixi clang-format
-- **WHEN** a contributor runs `pixi run setup-ide`
-- **THEN** IDE-specific configuration files are generated locally
-- **AND** the configuration points to `.pixi/envs/default/bin/clang-format`
-- **AND** the generated files are in `.gitignore`
+#### Scenario: Formatting uses Pixi-managed tools
+- **WHEN** a contributor runs `pixi run format`
+- **THEN** C/C++ formatting SHALL use `clang-format` from the Pixi environment
+- **AND** TOML formatting SHALL use `taplo` from the Pixi environment
 
-#### Scenario: Supported IDEs
-- **GIVEN** the setup-ide script
-- **THEN** VSCode is supported via `.vscode/settings.json`
-- **AND** Emacs is supported via `.dir-locals.el`
-- **AND** Vim is supported via `.exrc`
-- **AND** Neovim is supported via `.nvim.lua`
-- **AND** CLion is supported via `.idea/clangFormatSettings.xml`
-
-#### Scenario: First-time contributor setup check
+#### Scenario: Init installs the managed formatting hook
 - **WHEN** a contributor runs `pixi run init`
-- **THEN** the system checks if any IDE configuration exists
-- **AND** if not configured, displays instructions to run `pixi run setup-ide`
+- **THEN** the managed pre-commit hook SHALL be installed or repaired
+- **AND** the hook SHALL format staged C/C++ and TOML files via Pixi-managed tools
 
 ### Requirement: Scoped Sanitizer Instrumentation
 
@@ -107,8 +98,6 @@ The build system SHALL apply clang-tidy static analysis with per-directory confi
 - **AND** enum constants MUST use `UPPER_SNAKE_CASE`
 - **AND** functions MUST use `snake_case`
 - **AND** C-style arrays are forbidden in favor of `std::array`
-<<<<<<< Updated upstream
-
 ### Requirement: Repo-Controlled Semgrep Gate
 
 The CI system SHALL run a repo-controlled Semgrep scan as a blocking step in the static-analysis workflow.
@@ -136,5 +125,3 @@ The CI system SHALL run a repo-controlled Semgrep scan as a blocking step in the
 - **WHEN** the CI Semgrep gate evaluates the repository
 - **THEN** it SHALL cover only the approved high-signal policy bans selected for Semgrep
 - **AND** it SHALL NOT duplicate formatting, naming, include-order, lockfile/preset, or runtime-validation checks that are owned by other tools
-=======
->>>>>>> Stashed changes
