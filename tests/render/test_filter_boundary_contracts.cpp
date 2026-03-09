@@ -96,6 +96,8 @@ TEST_CASE("Filter chain boundary control contract coverage", "[filter_chain][bou
                                  std::function<void(FilterControlId, float)>>);
     static_assert(std::is_same_v<goggles::ui::PreChainParameterCallback,
                                  std::function<void(FilterControlId, float)>>);
+    static_assert(
+        std::is_same_v<goggles::ui::TargetFpsChangeCallback, std::function<void(uint32_t)>>);
 
     REQUIRE(std::string_view{goggles::render::to_string(FilterControlStage::prechain)} ==
             "prechain");
@@ -145,6 +147,61 @@ TEST_CASE("Filter chain boundary control contract coverage", "[filter_chain][bou
     REQUIRE(imgui_text->find("FILTER_TYPE_LABELS") != std::string::npos);
     REQUIRE(imgui_text->find("\"Nearest\"") != std::string::npos);
     REQUIRE(imgui_text->find("param.name == \"filter_type\"") != std::string::npos);
+    REQUIRE(imgui_text->find("set_target_fps_change_callback") != std::string::npos);
+    REQUIRE(imgui_text->find("\"Uncapped\"") != std::string::npos);
+    REQUIRE(imgui_text->find("\"Effective Pacing Target: Uncapped\"") != std::string::npos);
+    REQUIRE(app_text->find("set_target_fps_change_callback") != std::string::npos);
+    REQUIRE(app_text->find("m_imgui_layer->set_target_fps(target_fps);") != std::string::npos);
+
+    const auto app_set_target_pos =
+        app_text->find("void Application::set_target_fps(uint32_t target_fps)");
+    const auto app_assign_target_pos =
+        app_text->find("m_target_fps = target_fps;", app_set_target_pos);
+    const auto app_imgui_target_pos =
+        app_text->find("m_imgui_layer->set_target_fps(target_fps);", app_assign_target_pos);
+    const auto app_backend_target_pos =
+        app_text->find("m_vulkan_backend->set_target_fps(target_fps);", app_imgui_target_pos);
+    const auto app_compositor_target_pos =
+        app_text->find("m_compositor_server->set_target_fps(target_fps);", app_backend_target_pos);
+    REQUIRE(app_set_target_pos != std::string::npos);
+    REQUIRE(app_assign_target_pos != std::string::npos);
+    REQUIRE(app_imgui_target_pos != std::string::npos);
+    REQUIRE(app_backend_target_pos != std::string::npos);
+    REQUIRE(app_compositor_target_pos != std::string::npos);
+    REQUIRE(app_assign_target_pos < app_imgui_target_pos);
+    REQUIRE(app_imgui_target_pos < app_backend_target_pos);
+    REQUIRE(app_backend_target_pos < app_compositor_target_pos);
+
+    const auto uncapped_toggle_pos = imgui_text->find(
+        "const uint32_t updated_target_fps = uncapped ? 0u : m_last_capped_target_fps;");
+    const auto uncapped_callback_pos =
+        imgui_text->find("m_on_target_fps_change(updated_target_fps);", uncapped_toggle_pos);
+    const auto capped_input_pos =
+        imgui_text->find("ImGui::InputInt(\"Target FPS\"", uncapped_callback_pos);
+    const auto capped_clamp_pos = imgui_text->find(
+        "static_cast<uint32_t>(std::clamp(capped_target_fps, 1, 1000));", capped_input_pos);
+    REQUIRE(uncapped_toggle_pos != std::string::npos);
+    REQUIRE(uncapped_callback_pos != std::string::npos);
+    REQUIRE(capped_input_pos != std::string::npos);
+    REQUIRE(capped_clamp_pos != std::string::npos);
+    REQUIRE(uncapped_toggle_pos < capped_input_pos);
+    REQUIRE(capped_input_pos < capped_clamp_pos);
+
+    const auto compositor_server_path =
+        std::filesystem::path(GOGGLES_SOURCE_DIR) / "src/compositor/compositor_server.cpp";
+    auto compositor_server_text = read_text_file(compositor_server_path);
+    REQUIRE(compositor_server_text.has_value());
+    const auto compositor_set_target_pos =
+        compositor_server_text->find("void CompositorServer::set_target_fps(uint32_t target_fps)");
+    const auto compositor_store_pos = compositor_server_text->find(
+        "m_impl->state.target_fps.store(target_fps, std::memory_order_release);",
+        compositor_set_target_pos);
+    const auto compositor_wake_pos =
+        compositor_server_text->find("m_impl->state.wake_event_loop();", compositor_store_pos);
+    REQUIRE(compositor_set_target_pos != std::string::npos);
+    REQUIRE(compositor_store_pos != std::string::npos);
+    REQUIRE(compositor_wake_pos != std::string::npos);
+    REQUIRE(compositor_store_pos < compositor_wake_pos);
 
     const auto source_files = collect_app_ui_sources();
     const std::array<std::string_view, 3> forbidden_patterns = {
@@ -363,4 +420,45 @@ TEST_CASE("Runtime metrics keep root ownership while tracking the current captur
     REQUIRE_FALSE(metrics.should_track_surface_commit(other_root));
     REQUIRE(metrics.should_track_surface_commit(popup_surface));
     REQUIRE_FALSE(metrics.should_track_surface_commit(game_root));
+}
+
+TEST_CASE("Capture pacing only publishes through the paced target callback path",
+          "[app_window][capture_pacing_contract]") {
+    const auto compositor_present_path =
+        std::filesystem::path(GOGGLES_SOURCE_DIR) / "src/compositor/compositor_present.cpp";
+    const auto compositor_state_path =
+        std::filesystem::path(GOGGLES_SOURCE_DIR) / "src/compositor/compositor_state.hpp";
+
+    auto compositor_present_text = read_text_file(compositor_present_path);
+    auto compositor_state_text = read_text_file(compositor_state_path);
+    REQUIRE(compositor_present_text.has_value());
+    REQUIRE(compositor_state_text.has_value());
+
+    const auto non_target_bypass_pos =
+        compositor_present_text->find("if (surface != capture_target.surface) {");
+    const auto non_target_send_pos =
+        compositor_present_text->find("send_frame_done_now(surface);", non_target_bypass_pos);
+    const auto non_target_return_pos =
+        compositor_present_text->find("return;", non_target_send_pos);
+    const auto non_target_update_pos =
+        compositor_present_text->find("update_presented_frame(surface);", non_target_bypass_pos);
+    REQUIRE(non_target_bypass_pos != std::string::npos);
+    REQUIRE(non_target_send_pos != std::string::npos);
+    REQUIRE(non_target_return_pos != std::string::npos);
+    REQUIRE(non_target_send_pos < non_target_return_pos);
+    REQUIRE((non_target_update_pos == std::string::npos ||
+             non_target_update_pos > non_target_return_pos));
+
+    REQUIRE(compositor_state_text->find("CompositorState* state = nullptr;") != std::string::npos);
+    REQUIRE(compositor_state_text->find("wl_listener callback_surface_destroy{};") !=
+            std::string::npos);
+    REQUIRE(compositor_present_text->find(
+                "track_capture_callback_surface(capture_pacing, surface);") != std::string::npos);
+    REQUIRE(compositor_present_text->find("callback_surface_destroy.notify") != std::string::npos);
+    REQUIRE(compositor_present_text->find("wl_signal_add(&surface->events.destroy,") !=
+            std::string::npos);
+    REQUIRE(compositor_present_text->find("capture_pacing->callback_surface = nullptr;") !=
+            std::string::npos);
+    REQUIRE(compositor_present_text->find("capture_pacing->has_pending_frame = false;") !=
+            std::string::npos);
 }

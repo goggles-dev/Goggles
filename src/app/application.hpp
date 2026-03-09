@@ -62,6 +62,8 @@ public:
     [[nodiscard]] auto is_running() const -> bool { return m_running; }
     [[nodiscard]] auto x11_display() const -> std::string;
     [[nodiscard]] auto wayland_display() const -> std::string;
+    [[nodiscard]] auto target_fps() const -> uint32_t;
+    void set_target_fps(uint32_t target_fps);
     [[nodiscard]] auto gpu_index() const -> uint32_t;
     [[nodiscard]] auto gpu_uuid() const -> std::string;
 
@@ -121,6 +123,7 @@ private:
     };
     std::unordered_map<uint32_t, SurfaceRuntimeState> m_surface_state;
     uint32_t m_active_surface_id = 0;
+    uint32_t m_target_fps = 60;
 
     bool m_running = true;
     bool m_window_resized = false;

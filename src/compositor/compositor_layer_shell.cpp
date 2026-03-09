@@ -212,6 +212,14 @@ void CompositorState::handle_layer_surface_commit(LayerSurfaceHooks* hooks) {
         return;
     }
 
+    auto target = get_input_target(*this);
+    const auto* active_surface = target.surface ? target.surface : target.root_surface;
+    if (active_surface && hooks->surface == active_surface) {
+        note_active_surface_commit(hooks->surface);
+        schedule_capture_pacing(hooks->surface);
+        return;
+    }
+
     timespec now{};
     clock_gettime(CLOCK_MONOTONIC, &now);
     wlr_surface_send_frame_done(hooks->surface, &now);

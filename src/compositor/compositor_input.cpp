@@ -339,6 +339,7 @@ void CompositorState::process_input_events() {
     if (present_reset_requested.exchange(false, std::memory_order_acq_rel)) {
         refresh_presented_frame();
     }
+    process_capture_pacing();
 
     while (auto event_opt = event_queue.try_pop()) {
         auto& event = *event_opt;

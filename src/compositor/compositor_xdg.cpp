@@ -196,12 +196,7 @@ void CompositorState::handle_xdg_popup_commit(XdgPopupHooks* hooks) {
     }
 
     note_active_surface_commit(hooks->surface);
-
-    timespec now{};
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    wlr_surface_send_frame_done(hooks->surface, &now);
-
-    update_presented_frame(hooks->surface);
+    schedule_capture_pacing(hooks->surface);
 }
 
 void CompositorState::handle_xdg_popup_ack_configure(XdgPopupHooks* hooks) {
@@ -277,12 +272,7 @@ void CompositorState::handle_xdg_surface_commit(XdgToplevelHooks* hooks) {
     }
 
     note_active_surface_commit(hooks->surface);
-
-    timespec now{};
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    wlr_surface_send_frame_done(hooks->surface, &now);
-
-    update_presented_frame(hooks->surface);
+    schedule_capture_pacing(hooks->surface);
 }
 
 void CompositorState::handle_xdg_surface_ack_configure(XdgToplevelHooks* hooks) {

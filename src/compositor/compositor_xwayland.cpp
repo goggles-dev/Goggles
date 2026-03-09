@@ -351,16 +351,19 @@ void CompositorState::handle_xwayland_surface_commit(XWaylandSurfaceHooks* hooks
 
     // Release buffer to allow swapchain image reuse
     // Without this, X11 clients block on vkQueuePresentKHR
-    timespec now{};
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    wlr_surface_send_frame_done(hooks->xsurface->surface, &now);
-
     if (hooks->mapped) {
         if (hooks->override_redirect) {
+            timespec now{};
+            clock_gettime(CLOCK_MONOTONIC, &now);
+            wlr_surface_send_frame_done(hooks->xsurface->surface, &now);
             request_present_reset();
         } else {
-            update_presented_frame(hooks->xsurface->surface);
+            schedule_capture_pacing(hooks->xsurface->surface);
         }
+    } else {
+        timespec now{};
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        wlr_surface_send_frame_done(hooks->xsurface->surface, &now);
     }
 }
 

@@ -69,6 +69,10 @@ public:
     [[nodiscard]] auto x11_display() const -> std::string;
     /// @brief Returns the Wayland socket name, or an empty string if not started.
     [[nodiscard]] auto wayland_display() const -> std::string;
+    /// @brief Returns the current effective compositor pacing target.
+    [[nodiscard]] auto target_fps() const -> uint32_t;
+    /// @brief Updates the effective compositor pacing target.
+    void set_target_fps(uint32_t target_fps);
 
     /// @brief Forwards an SDL keyboard event.
     /// @param event SDL keyboard event.

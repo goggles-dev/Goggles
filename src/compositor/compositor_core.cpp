@@ -233,6 +233,19 @@ auto CompositorState::setup_event_loop_fd() -> Result<void> {
                                 "Failed to add eventfd to event loop");
     }
 
+    pacing_timer_source = wl_event_loop_add_timer(
+        event_loop,
+        [](void* data) -> int {
+            auto* state = static_cast<CompositorState*>(data);
+            state->process_capture_pacing();
+            return 0;
+        },
+        this);
+    if (!pacing_timer_source) {
+        return make_error<void>(ErrorCode::input_init_failed,
+                                "Failed to add capture pacing timer to event loop");
+    }
+
     return {};
 }
 
@@ -299,6 +312,11 @@ void CompositorState::teardown() {
     if (event_source) {
         wl_event_source_remove(event_source);
         event_source = nullptr;
+    }
+
+    if (pacing_timer_source) {
+        wl_event_source_remove(pacing_timer_source);
+        pacing_timer_source = nullptr;
     }
 
     {
