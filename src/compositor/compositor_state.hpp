@@ -98,8 +98,10 @@ struct CursorFrame {
 };
 
 struct CapturePacingState {
+    CompositorState* state = nullptr;
     RuntimeMetricsState::CaptureTarget capture_target{};
     wlr_surface* callback_surface = nullptr;
+    wl_listener callback_surface_destroy{};
     std::chrono::steady_clock::time_point last_dispatch_time;
     bool has_capture_target = false;
     bool has_pending_frame = false;

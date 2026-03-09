@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstddef>
 #include <ctime>
 #include <numeric>
 
@@ -76,12 +77,48 @@ auto is_same_capture_target(const RuntimeMetricsState::CaptureTarget& lhs,
 }
 
 auto take_pending_capture_callback(CapturePacingState& capture_pacing) -> wlr_surface* {
-    if (!capture_pacing.has_pending_frame) {
+    if (!capture_pacing.has_pending_frame || !capture_pacing.callback_surface) {
         return nullptr;
     }
 
+    detach_listener(capture_pacing.callback_surface_destroy);
+    auto* callback_surface = capture_pacing.callback_surface;
+    capture_pacing.callback_surface = nullptr;
     capture_pacing.has_pending_frame = false;
-    return capture_pacing.callback_surface;
+    return callback_surface;
+}
+
+void reset_capture_pacing(CapturePacingState& capture_pacing) {
+    auto* state = capture_pacing.state;
+    detach_listener(capture_pacing.callback_surface_destroy);
+    capture_pacing = {};
+    capture_pacing.state = state;
+}
+
+void track_capture_callback_surface(CapturePacingState& capture_pacing, wlr_surface* surface) {
+    detach_listener(capture_pacing.callback_surface_destroy);
+    capture_pacing.callback_surface = surface;
+    if (!surface) {
+        return;
+    }
+
+    capture_pacing.callback_surface_destroy.notify = [](wl_listener* listener, void* /*data*/) {
+        auto* capture_pacing = reinterpret_cast<CapturePacingState*>(
+            reinterpret_cast<char*>(listener) -
+            offsetof(CapturePacingState, callback_surface_destroy));
+        if (capture_pacing->state) {
+            std::scoped_lock lock(capture_pacing->state->present_mutex);
+            capture_pacing->callback_surface = nullptr;
+            capture_pacing->has_pending_frame = false;
+            detach_listener(capture_pacing->callback_surface_destroy);
+            return;
+        }
+
+        capture_pacing->callback_surface = nullptr;
+        capture_pacing->has_pending_frame = false;
+        detach_listener(capture_pacing->callback_surface_destroy);
+    };
+    wl_signal_add(&surface->events.destroy, &capture_pacing.callback_surface_destroy);
 }
 
 auto frame_interval_for_fps(uint32_t target_fps) -> SteadyClock::duration {
@@ -313,7 +350,6 @@ void CompositorState::schedule_capture_pacing(wlr_surface* surface) {
     auto target = get_input_target(*this);
     if (!surface || !target.root_surface) {
         send_frame_done_now(surface);
-        update_presented_frame(surface);
         return;
     }
 
@@ -323,21 +359,21 @@ void CompositorState::schedule_capture_pacing(wlr_surface* surface) {
     };
     if (surface != capture_target.surface) {
         send_frame_done_now(surface);
-        update_presented_frame(surface);
         return;
     }
 
     wlr_surface* resolved_surface = nullptr;
     {
         std::scoped_lock lock(present_mutex);
+        capture_pacing.state = this;
         if (!capture_pacing.has_capture_target ||
             !is_same_capture_target(capture_pacing.capture_target, capture_target)) {
             resolved_surface = take_pending_capture_callback(capture_pacing);
-            capture_pacing = {};
+            reset_capture_pacing(capture_pacing);
             capture_pacing.capture_target = capture_target;
             capture_pacing.has_capture_target = true;
         }
-        capture_pacing.callback_surface = surface;
+        track_capture_callback_surface(capture_pacing, surface);
         capture_pacing.has_pending_frame = true;
     }
 
@@ -377,13 +413,14 @@ void CompositorState::process_capture_pacing() {
 
     {
         std::scoped_lock lock(present_mutex);
+        capture_pacing.state = this;
         if (!capture_target.root_surface) {
             resolved_surface = take_pending_capture_callback(capture_pacing);
-            capture_pacing = {};
+            reset_capture_pacing(capture_pacing);
         } else if (!capture_pacing.has_capture_target ||
                    !is_same_capture_target(capture_pacing.capture_target, capture_target)) {
             resolved_surface = take_pending_capture_callback(capture_pacing);
-            capture_pacing = {};
+            reset_capture_pacing(capture_pacing);
             capture_pacing.capture_target = capture_target;
             capture_pacing.has_capture_target = true;
         }

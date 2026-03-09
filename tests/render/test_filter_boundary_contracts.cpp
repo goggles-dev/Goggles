@@ -421,3 +421,44 @@ TEST_CASE("Runtime metrics keep root ownership while tracking the current captur
     REQUIRE(metrics.should_track_surface_commit(popup_surface));
     REQUIRE_FALSE(metrics.should_track_surface_commit(game_root));
 }
+
+TEST_CASE("Capture pacing only publishes through the paced target callback path",
+          "[app_window][capture_pacing_contract]") {
+    const auto compositor_present_path =
+        std::filesystem::path(GOGGLES_SOURCE_DIR) / "src/compositor/compositor_present.cpp";
+    const auto compositor_state_path =
+        std::filesystem::path(GOGGLES_SOURCE_DIR) / "src/compositor/compositor_state.hpp";
+
+    auto compositor_present_text = read_text_file(compositor_present_path);
+    auto compositor_state_text = read_text_file(compositor_state_path);
+    REQUIRE(compositor_present_text.has_value());
+    REQUIRE(compositor_state_text.has_value());
+
+    const auto non_target_bypass_pos =
+        compositor_present_text->find("if (surface != capture_target.surface) {");
+    const auto non_target_send_pos =
+        compositor_present_text->find("send_frame_done_now(surface);", non_target_bypass_pos);
+    const auto non_target_return_pos =
+        compositor_present_text->find("return;", non_target_send_pos);
+    const auto non_target_update_pos =
+        compositor_present_text->find("update_presented_frame(surface);", non_target_bypass_pos);
+    REQUIRE(non_target_bypass_pos != std::string::npos);
+    REQUIRE(non_target_send_pos != std::string::npos);
+    REQUIRE(non_target_return_pos != std::string::npos);
+    REQUIRE(non_target_send_pos < non_target_return_pos);
+    REQUIRE((non_target_update_pos == std::string::npos ||
+             non_target_update_pos > non_target_return_pos));
+
+    REQUIRE(compositor_state_text->find("CompositorState* state = nullptr;") != std::string::npos);
+    REQUIRE(compositor_state_text->find("wl_listener callback_surface_destroy{};") !=
+            std::string::npos);
+    REQUIRE(compositor_present_text->find(
+                "track_capture_callback_surface(capture_pacing, surface);") != std::string::npos);
+    REQUIRE(compositor_present_text->find("callback_surface_destroy.notify") != std::string::npos);
+    REQUIRE(compositor_present_text->find("wl_signal_add(&surface->events.destroy,") !=
+            std::string::npos);
+    REQUIRE(compositor_present_text->find("capture_pacing->callback_surface = nullptr;") !=
+            std::string::npos);
+    REQUIRE(compositor_present_text->find("capture_pacing->has_pending_frame = false;") !=
+            std::string::npos);
+}
