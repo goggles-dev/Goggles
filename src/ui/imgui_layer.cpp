@@ -40,7 +40,7 @@ auto compute_plot_max(uint32_t target_fps, const PlotConfig& config) -> float {
         return config.uncapped_plot_max;
     }
 
-    return std::max(round_up_to_step(config.capped_plot_max, config.step), config.min_plot_max);
+    return round_up_to_step(config.capped_plot_max, config.step);
 }
 
 auto compute_game_fps_plot_max(uint32_t target_fps) -> float {
