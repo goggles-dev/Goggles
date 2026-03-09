@@ -75,6 +75,15 @@ auto is_same_capture_target(const RuntimeMetricsState::CaptureTarget& lhs,
     return lhs.root_surface == rhs.root_surface && lhs.surface == rhs.surface;
 }
 
+auto take_pending_capture_callback(CapturePacingState& capture_pacing) -> wlr_surface* {
+    if (!capture_pacing.has_pending_frame) {
+        return nullptr;
+    }
+
+    capture_pacing.has_pending_frame = false;
+    return capture_pacing.callback_surface;
+}
+
 auto frame_interval_for_fps(uint32_t target_fps) -> SteadyClock::duration {
     if (target_fps == 0) {
         return SteadyClock::duration::zero();
@@ -318,16 +327,23 @@ void CompositorState::schedule_capture_pacing(wlr_surface* surface) {
         return;
     }
 
+    wlr_surface* resolved_surface = nullptr;
     {
         std::scoped_lock lock(present_mutex);
         if (!capture_pacing.has_capture_target ||
             !is_same_capture_target(capture_pacing.capture_target, capture_target)) {
+            resolved_surface = take_pending_capture_callback(capture_pacing);
             capture_pacing = {};
             capture_pacing.capture_target = capture_target;
             capture_pacing.has_capture_target = true;
         }
         capture_pacing.callback_surface = surface;
         capture_pacing.has_pending_frame = true;
+    }
+
+    if (resolved_surface && resolved_surface != surface) {
+        send_frame_done_now(resolved_surface);
+        update_presented_frame(resolved_surface);
     }
 
     process_capture_pacing();
@@ -340,16 +356,16 @@ void CompositorState::arm_capture_pacing_timer(std::chrono::steady_clock::time_p
 
     const auto now = SteadyClock::now();
     const auto delay = deadline > now ? deadline - now : SteadyClock::duration::zero();
-    int delay_ms =
-        static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(delay).count());
-    if (delay > SteadyClock::duration::zero() && delay_ms == 0) {
-        delay_ms = 1;
+    int delay_ms = 0;
+    if (delay > SteadyClock::duration::zero()) {
+        delay_ms = static_cast<int>(std::chrono::ceil<std::chrono::milliseconds>(delay).count());
     }
     (void)wl_event_source_timer_update(pacing_timer_source, delay_ms);
 }
 
 void CompositorState::process_capture_pacing() {
     GOGGLES_PROFILE_FUNCTION();
+    wlr_surface* resolved_surface = nullptr;
     wlr_surface* ready_surface = nullptr;
     std::optional<SteadyClock::time_point> next_deadline;
 
@@ -362,32 +378,42 @@ void CompositorState::process_capture_pacing() {
     {
         std::scoped_lock lock(present_mutex);
         if (!capture_target.root_surface) {
+            resolved_surface = take_pending_capture_callback(capture_pacing);
             capture_pacing = {};
         } else if (!capture_pacing.has_capture_target ||
                    !is_same_capture_target(capture_pacing.capture_target, capture_target)) {
+            resolved_surface = take_pending_capture_callback(capture_pacing);
             capture_pacing = {};
             capture_pacing.capture_target = capture_target;
-            capture_pacing.callback_surface = capture_target.surface;
             capture_pacing.has_capture_target = true;
         }
 
-        if (!capture_pacing.has_pending_frame || !capture_pacing.callback_surface) {
-            return;
+        if (capture_pacing.has_pending_frame && capture_pacing.callback_surface) {
+            const auto target_interval =
+                frame_interval_for_fps(target_fps.load(std::memory_order_acquire));
+            const auto now = SteadyClock::now();
+            if (target_interval == SteadyClock::duration::zero() ||
+                !capture_pacing.has_last_dispatch_time) {
+                ready_surface = capture_pacing.callback_surface;
+                capture_pacing.has_pending_frame = false;
+                capture_pacing.last_dispatch_time = now;
+                capture_pacing.has_last_dispatch_time = true;
+            } else {
+                const auto dispatch_deadline = capture_pacing.last_dispatch_time + target_interval;
+                if (dispatch_deadline <= now) {
+                    ready_surface = capture_pacing.callback_surface;
+                    capture_pacing.has_pending_frame = false;
+                    capture_pacing.last_dispatch_time = dispatch_deadline;
+                } else {
+                    next_deadline = dispatch_deadline;
+                }
+            }
         }
+    }
 
-        const auto target_interval =
-            frame_interval_for_fps(target_fps.load(std::memory_order_acquire));
-        const auto now = SteadyClock::now();
-        if (target_interval == SteadyClock::duration::zero() ||
-            !capture_pacing.has_last_dispatch_time ||
-            capture_pacing.last_dispatch_time + target_interval <= now) {
-            ready_surface = capture_pacing.callback_surface;
-            capture_pacing.has_pending_frame = false;
-            capture_pacing.last_dispatch_time = now;
-            capture_pacing.has_last_dispatch_time = true;
-        } else {
-            next_deadline = capture_pacing.last_dispatch_time + target_interval;
-        }
+    if (resolved_surface && resolved_surface != ready_surface) {
+        send_frame_done_now(resolved_surface);
+        update_presented_frame(resolved_surface);
     }
 
     if (ready_surface) {

@@ -813,11 +813,11 @@ void Application::set_target_fps(uint32_t target_fps) {
     if (m_imgui_layer) {
         m_imgui_layer->set_target_fps(target_fps);
     }
-    if (m_compositor_server) {
-        m_compositor_server->set_target_fps(target_fps);
-    }
     if (m_vulkan_backend) {
         m_vulkan_backend->set_target_fps(target_fps);
+    }
+    if (m_compositor_server) {
+        m_compositor_server->set_target_fps(target_fps);
     }
 }
 

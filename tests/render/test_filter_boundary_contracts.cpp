@@ -159,18 +159,18 @@ TEST_CASE("Filter chain boundary control contract coverage", "[filter_chain][bou
         app_text->find("m_target_fps = target_fps;", app_set_target_pos);
     const auto app_imgui_target_pos =
         app_text->find("m_imgui_layer->set_target_fps(target_fps);", app_assign_target_pos);
-    const auto app_compositor_target_pos =
-        app_text->find("m_compositor_server->set_target_fps(target_fps);", app_imgui_target_pos);
     const auto app_backend_target_pos =
-        app_text->find("m_vulkan_backend->set_target_fps(target_fps);", app_compositor_target_pos);
+        app_text->find("m_vulkan_backend->set_target_fps(target_fps);", app_imgui_target_pos);
+    const auto app_compositor_target_pos =
+        app_text->find("m_compositor_server->set_target_fps(target_fps);", app_backend_target_pos);
     REQUIRE(app_set_target_pos != std::string::npos);
     REQUIRE(app_assign_target_pos != std::string::npos);
     REQUIRE(app_imgui_target_pos != std::string::npos);
-    REQUIRE(app_compositor_target_pos != std::string::npos);
     REQUIRE(app_backend_target_pos != std::string::npos);
+    REQUIRE(app_compositor_target_pos != std::string::npos);
     REQUIRE(app_assign_target_pos < app_imgui_target_pos);
-    REQUIRE(app_imgui_target_pos < app_compositor_target_pos);
-    REQUIRE(app_compositor_target_pos < app_backend_target_pos);
+    REQUIRE(app_imgui_target_pos < app_backend_target_pos);
+    REQUIRE(app_backend_target_pos < app_compositor_target_pos);
 
     const auto uncapped_toggle_pos = imgui_text->find(
         "const uint32_t updated_target_fps = uncapped ? 0u : m_last_capped_target_fps;");
