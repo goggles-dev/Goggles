@@ -98,8 +98,6 @@ The build system SHALL apply clang-tidy static analysis with per-directory confi
 - **AND** enum constants MUST use `UPPER_SNAKE_CASE`
 - **AND** functions MUST use `snake_case`
 - **AND** C-style arrays are forbidden in favor of `std::array`
-<<<<<<< Updated upstream
-
 ### Requirement: Repo-Controlled Semgrep Gate
 
 The CI system SHALL run a repo-controlled Semgrep scan as a blocking step in the static-analysis workflow.
@@ -127,5 +125,3 @@ The CI system SHALL run a repo-controlled Semgrep scan as a blocking step in the
 - **WHEN** the CI Semgrep gate evaluates the repository
 - **THEN** it SHALL cover only the approved high-signal policy bans selected for Semgrep
 - **AND** it SHALL NOT duplicate formatting, naming, include-order, lockfile/preset, or runtime-validation checks that are owned by other tools
-=======
->>>>>>> Stashed changes
