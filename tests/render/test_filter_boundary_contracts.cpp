@@ -299,7 +299,7 @@ TEST_CASE("Filter chain wrapper boundary contract coverage", "[filter_chain][wra
     REQUIRE(wrapper_text->find("GOGGLES_LOG_INFO(") == std::string::npos);
 }
 
-TEST_CASE("Runtime metrics follow the stable capture target root",
+TEST_CASE("Runtime metrics keep root ownership while tracking the current capture surface",
           "[app_window][runtime_metrics_contract]") {
     using RuntimeMetricsState = goggles::input::RuntimeMetricsState;
 
@@ -327,9 +327,12 @@ TEST_CASE("Runtime metrics follow the stable capture target root",
 
     REQUIRE_FALSE(metrics.should_reset_for_capture_target(game_root));
     REQUIRE(metrics.should_reset_for_capture_target(other_root));
-    REQUIRE(metrics.should_track_surface_commit(game_root));
-    REQUIRE_FALSE(metrics.should_track_surface_commit(popup_surface));
-    REQUIRE_FALSE(metrics.should_track_surface_commit(nullptr));
+    REQUIRE(metrics.should_track_surface_commit(game_root, game_root));
+    REQUIRE(metrics.should_track_surface_commit(popup_surface, popup_surface));
+    REQUIRE_FALSE(metrics.should_track_surface_commit(game_root, popup_surface));
+    REQUIRE_FALSE(metrics.should_track_surface_commit(other_root, popup_surface));
+    REQUIRE_FALSE(metrics.should_track_surface_commit(nullptr, popup_surface));
+    REQUIRE_FALSE(metrics.should_track_surface_commit(popup_surface, nullptr));
     REQUIRE(metrics.capture_target_root_surface == game_root);
     REQUIRE(metrics.game_frame_interval_count == 0);
     REQUIRE(metrics.compositor_latency_count == 0);
@@ -343,6 +346,6 @@ TEST_CASE("Runtime metrics follow the stable capture target root",
     metrics.reset_for_capture_target(other_root);
 
     REQUIRE(metrics.capture_target_root_surface == other_root);
-    REQUIRE(metrics.should_track_surface_commit(other_root));
-    REQUIRE_FALSE(metrics.should_track_surface_commit(game_root));
+    REQUIRE(metrics.should_track_surface_commit(other_root, other_root));
+    REQUIRE_FALSE(metrics.should_track_surface_commit(game_root, other_root));
 }

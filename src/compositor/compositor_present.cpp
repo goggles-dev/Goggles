@@ -276,7 +276,8 @@ void CompositorState::note_active_surface_commit(wlr_surface* surface) {
         return;
     }
 
-    if (surface != target.root_surface) {
+    auto* capture_surface = target.surface ? target.surface : target.root_surface;
+    if (surface != capture_surface) {
         return;
     }
 
@@ -285,7 +286,7 @@ void CompositorState::note_active_surface_commit(wlr_surface* surface) {
     if (runtime_metrics.should_reset_for_capture_target(target.root_surface)) {
         runtime_metrics.reset_for_capture_target(target.root_surface);
     }
-    if (!runtime_metrics.should_track_surface_commit(surface)) {
+    if (!runtime_metrics.should_track_surface_commit(surface, capture_surface)) {
         return;
     }
 

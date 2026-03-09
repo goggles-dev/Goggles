@@ -53,8 +53,10 @@ struct RuntimeMetricsState {
         return capture_target_root_surface != root_surface;
     }
 
-    [[nodiscard]] bool should_track_surface_commit(wlr_surface* surface) const {
-        return surface != nullptr && surface == capture_target_root_surface;
+    [[nodiscard]] bool should_track_surface_commit(wlr_surface* committed_surface,
+                                                   wlr_surface* capture_surface) const {
+        return capture_target_root_surface != nullptr && committed_surface != nullptr &&
+               capture_surface != nullptr && committed_surface == capture_surface;
     }
 };
 
