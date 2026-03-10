@@ -259,14 +259,32 @@ TEST_CASE("Async swap and resize safety contract coverage", "[filter_chain][asyn
     REQUIRE(failure_clear_ready_pos < failure_return_pos);
     REQUIRE(failure_return_pos < success_signal_pos);
 
+    const auto swap_restore_decl_pos =
+        controller_text->find("auto restore_result =", check_swap_pos);
     const auto swap_apply_state_pos =
-        controller_text->find("apply_runtime_state(filter_chain,", check_swap_pos);
+        controller_text->find("apply_runtime_state(pending_filter_chain,", swap_restore_decl_pos);
     const auto swap_authoritative_controls_pos = controller_text->find(
         "source_resolution, authoritative_control_overrides,", swap_apply_state_pos);
+    const auto swap_restore_failure_pos =
+        controller_text->find("if (!restore_result) {", swap_apply_state_pos);
+    const auto swap_restore_destroy_pos = controller_text->find(
+        "destroy_filter_chain(pending_filter_chain", swap_restore_failure_pos);
+    const auto swap_retire_pos =
+        controller_text->find("retire_runtime_with_bounded_fallback(", swap_restore_failure_pos);
+    REQUIRE(swap_restore_decl_pos != std::string::npos);
     REQUIRE(swap_apply_state_pos != std::string::npos);
     REQUIRE(swap_authoritative_controls_pos != std::string::npos);
-    REQUIRE(swap_apply_state_pos < success_signal_pos);
-    REQUIRE(swap_authoritative_controls_pos < success_signal_pos);
+    REQUIRE(swap_restore_failure_pos != std::string::npos);
+    REQUIRE(swap_restore_destroy_pos != std::string::npos);
+    REQUIRE(swap_retire_pos != std::string::npos);
+    REQUIRE(swap_restore_decl_pos < swap_apply_state_pos);
+    REQUIRE(swap_apply_state_pos < swap_restore_failure_pos);
+    REQUIRE(swap_authoritative_controls_pos < swap_restore_failure_pos);
+    REQUIRE(swap_restore_failure_pos < swap_retire_pos);
+    REQUIRE(swap_restore_destroy_pos < swap_retire_pos);
+    REQUIRE(swap_retire_pos < success_signal_pos);
+    REQUIRE(controller_text->find("apply_runtime_state(filter_chain,", check_swap_pos) ==
+            std::string::npos);
 
     REQUIRE(controller_text->find("requested_controls = authoritative_control_overrides.empty()") !=
             std::string::npos);

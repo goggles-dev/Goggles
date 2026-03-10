@@ -99,20 +99,22 @@ auto snapshot_runtime_controls(const FilterChainRuntime& chain)
     return controls;
 }
 
-void apply_runtime_state(FilterChainRuntime& chain, const ChainStagePolicy& policy,
+auto apply_runtime_state(FilterChainRuntime& chain, const ChainStagePolicy& policy,
                          vk::Extent2D prechain_resolution,
                          const std::vector<FilterChainController::ControlOverride>& controls,
-                         const char* control_failure_prefix) {
+                         const char* control_failure_prefix) -> Result<void> {
     auto policy_result = chain.set_stage_policy(policy);
     if (!policy_result) {
-        GOGGLES_LOG_WARN("Failed to apply filter-chain stage policy: {}",
-                         policy_result.error().message);
+        return make_error<void>(policy_result.error().code,
+                                "Failed to apply filter-chain stage policy: " +
+                                    policy_result.error().message);
     }
 
     auto resolution_result = chain.set_prechain_resolution(prechain_resolution);
     if (!resolution_result) {
-        GOGGLES_LOG_WARN("Failed to set prechain resolution: {}",
-                         resolution_result.error().message);
+        return make_error<void>(resolution_result.error().code,
+                                "Failed to set prechain resolution: " +
+                                    resolution_result.error().message);
     }
 
     for (const auto& control : controls) {
@@ -126,6 +128,8 @@ void apply_runtime_state(FilterChainRuntime& chain, const ChainStagePolicy& poli
                              control.control_id);
         }
     }
+
+    return {};
 }
 
 auto fallback_retire_after_frame(uint64_t frame_count) -> uint64_t {
@@ -227,8 +231,14 @@ auto FilterChainController::recreate_filter_chain(const RuntimeBuildConfig& conf
         }
     }
 
-    apply_runtime_state(filter_chain, policy, source_resolution, control_state,
-                        "Failed to restore filter control value after chain rebuild");
+    auto restore_result =
+        apply_runtime_state(filter_chain, policy, source_resolution, control_state,
+                            "Failed to restore filter control value after chain rebuild");
+    if (!restore_result) {
+        destroy_filter_chain(filter_chain, "Failed to destroy filter chain after restore failure");
+        filter_chain = {};
+        return nonstd::make_unexpected(restore_result.error());
+    }
     authoritative_control_overrides = snapshot_runtime_controls(filter_chain);
 
     return {};
@@ -336,9 +346,9 @@ auto FilterChainController::reload_shader_preset(std::filesystem::path new_prese
                 }
             }
 
-            apply_runtime_state(pending_chain, requested_policy, requested_prechain_resolution,
-                                requested_controls,
-                                "Failed to restore filter control value before swap");
+            GOGGLES_TRY(apply_runtime_state(pending_chain, requested_policy,
+                                            requested_prechain_resolution, requested_controls,
+                                            "Failed to restore filter control value before swap"));
 
             pending_filter_chain = std::move(pending_chain);
             pending_chain_ready.store(true, std::memory_order_release);
@@ -385,17 +395,26 @@ void FilterChainController::check_pending_chain_swap(const std::function<void()>
         }
     }
 
+    auto restore_result =
+        apply_runtime_state(pending_filter_chain,
+                            ChainStagePolicy{
+                                .prechain_enabled = prechain_policy_enabled,
+                                .effect_stage_enabled = effect_stage_policy_enabled,
+                            },
+                            source_resolution, authoritative_control_overrides,
+                            "Failed to restore filter control value before swap");
+    if (!restore_result) {
+        GOGGLES_LOG_ERROR("Failed to restore filter-chain runtime state before swap: {}",
+                          restore_result.error().message);
+        destroy_filter_chain(pending_filter_chain, "Failed to destroy pending filter chain");
+        pending_chain_ready.store(false, std::memory_order_release);
+        return;
+    }
+
     retire_runtime_with_bounded_fallback(retired_runtimes, std::move(filter_chain), frame_count,
                                          wait_all_frames);
 
     filter_chain = std::move(pending_filter_chain);
-    apply_runtime_state(filter_chain,
-                        ChainStagePolicy{
-                            .prechain_enabled = prechain_policy_enabled,
-                            .effect_stage_enabled = effect_stage_policy_enabled,
-                        },
-                        source_resolution, authoritative_control_overrides,
-                        "Failed to restore filter control value after swap");
     authoritative_control_overrides = snapshot_runtime_controls(filter_chain);
     preset_path = pending_preset_path;
     pending_chain_ready.store(false, std::memory_order_release);
