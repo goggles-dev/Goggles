@@ -76,11 +76,132 @@ auto create_filter_chain_runtime(const FilterChainController::RuntimeBuildConfig
     return std::move(filter_chain_result.value());
 }
 
+auto snapshot_runtime_controls(const FilterChainRuntime& chain)
+    -> std::vector<FilterChainController::ControlOverride> {
+    if (!chain) {
+        return {};
+    }
+
+    auto controls_result = chain.list_controls();
+    if (!controls_result) {
+        GOGGLES_LOG_WARN("Failed to snapshot filter controls: {}", controls_result.error().message);
+        return {};
+    }
+
+    std::vector<FilterChainController::ControlOverride> controls;
+    controls.reserve(controls_result->size());
+    for (const auto& descriptor : controls_result.value()) {
+        controls.push_back(FilterChainController::ControlOverride{
+            .control_id = descriptor.control_id,
+            .value = descriptor.current_value,
+        });
+    }
+    return controls;
+}
+
+auto apply_runtime_state(FilterChainRuntime& chain, const ChainStagePolicy& policy,
+                         vk::Extent2D prechain_resolution,
+                         const std::vector<FilterChainController::ControlOverride>& controls,
+                         const char* control_failure_prefix) -> Result<void> {
+    auto policy_result = chain.set_stage_policy(policy);
+    if (!policy_result) {
+        return make_error<void>(policy_result.error().code,
+                                "Failed to apply filter-chain stage policy: " +
+                                    policy_result.error().message);
+    }
+
+    auto resolution_result = chain.set_prechain_resolution(prechain_resolution);
+    if (!resolution_result) {
+        return make_error<void>(resolution_result.error().code,
+                                "Failed to set prechain resolution: " +
+                                    resolution_result.error().message);
+    }
+
+    for (const auto& control : controls) {
+        auto set_result = chain.set_control_value(control.control_id, control.value);
+        if (!set_result) {
+            GOGGLES_LOG_WARN("{}: {}", control_failure_prefix, set_result.error().message);
+            continue;
+        }
+        if (!set_result.value()) {
+            GOGGLES_LOG_WARN("{}: control {} not found", control_failure_prefix,
+                             control.control_id);
+        }
+    }
+
+    return {};
+}
+
+auto fallback_retire_after_frame(uint64_t frame_count) -> uint64_t {
+    constexpr uint64_t MAX_FRAME = std::numeric_limits<uint64_t>::max();
+    constexpr uint64_t RETIRE_DELAY =
+        FilterChainController::RetiredRuntimeTracker::FALLBACK_RETIRE_DELAY_FRAMES;
+    return frame_count > (MAX_FRAME - RETIRE_DELAY) ? MAX_FRAME : frame_count + RETIRE_DELAY;
+}
+
+void retire_runtime_with_bounded_fallback(
+    FilterChainController::RetiredRuntimeTracker& retired_runtimes,
+    FilterChainRuntime retired_runtime, uint64_t frame_count,
+    const std::function<void()>& wait_all_frames) {
+    if (!retired_runtime) {
+        return;
+    }
+
+    if (retired_runtimes.retired_count <
+        FilterChainController::RetiredRuntimeTracker::MAX_RETIRED_RUNTIMES) {
+        auto& retired = retired_runtimes.retired_runtimes[retired_runtimes.retired_count++];
+        retired.filter_chain = std::move(retired_runtime);
+        retired.destroy_after_frame = fallback_retire_after_frame(frame_count);
+        return;
+    }
+
+    GOGGLES_LOG_WARN("Retired runtime queue full, forcing immediate retirement");
+    wait_all_frames();
+    destroy_filter_chain(retired_runtime, "Failed to destroy retired filter chain");
+}
+
+void cleanup_retired_runtime_tracker(FilterChainController::RetiredRuntimeTracker& retired_runtimes,
+                                     uint64_t frame_count) {
+    size_t write_idx = 0;
+    for (size_t i = 0; i < retired_runtimes.retired_count; ++i) {
+        if (frame_count >= retired_runtimes.retired_runtimes[i].destroy_after_frame) {
+            GOGGLES_LOG_DEBUG("Destroying retired filter chain");
+            destroy_filter_chain(retired_runtimes.retired_runtimes[i].filter_chain,
+                                 "Failed to destroy retired filter chain");
+            retired_runtimes.retired_runtimes[i].destroy_after_frame = 0;
+            continue;
+        }
+
+        if (write_idx != i) {
+            retired_runtimes.retired_runtimes[write_idx].filter_chain =
+                std::move(retired_runtimes.retired_runtimes[i].filter_chain);
+            retired_runtimes.retired_runtimes[write_idx].destroy_after_frame =
+                retired_runtimes.retired_runtimes[i].destroy_after_frame;
+        }
+        ++write_idx;
+    }
+    retired_runtimes.retired_count = write_idx;
+}
+
+void shutdown_retired_runtime_tracker(
+    FilterChainController::RetiredRuntimeTracker& retired_runtimes) {
+    for (size_t i = 0; i < retired_runtimes.retired_count; ++i) {
+        destroy_filter_chain(retired_runtimes.retired_runtimes[i].filter_chain,
+                             "Retired filter chain destroy during shutdown failed");
+        retired_runtimes.retired_runtimes[i].destroy_after_frame = 0;
+    }
+    retired_runtimes.retired_count = 0;
+}
+
 } // namespace
 
 auto FilterChainController::recreate_filter_chain(const RuntimeBuildConfig& config)
     -> Result<void> {
     GOGGLES_PROFILE_FUNCTION();
+
+    const auto control_state = authoritative_control_overrides.empty()
+                                   ? snapshot_runtime_controls(filter_chain)
+                                   : authoritative_control_overrides;
 
     if (filter_chain) {
         auto destroy_result = filter_chain.destroy();
@@ -97,10 +218,10 @@ auto FilterChainController::recreate_filter_chain(const RuntimeBuildConfig& conf
     }
     filter_chain = std::move(filter_chain_result.value());
 
-    set_stage_policy(ChainStagePolicy{
+    const ChainStagePolicy policy{
         .prechain_enabled = prechain_policy_enabled,
         .effect_stage_enabled = effect_stage_policy_enabled,
-    });
+    };
 
     if (!preset_path.empty()) {
         auto load_result = filter_chain.load_preset(preset_path);
@@ -109,6 +230,16 @@ auto FilterChainController::recreate_filter_chain(const RuntimeBuildConfig& conf
                              load_result.error().message);
         }
     }
+
+    auto restore_result =
+        apply_runtime_state(filter_chain, policy, source_resolution, control_state,
+                            "Failed to restore filter control value after chain rebuild");
+    if (!restore_result) {
+        destroy_filter_chain(filter_chain, "Failed to destroy filter chain after restore failure");
+        filter_chain = {};
+        return nonstd::make_unexpected(restore_result.error());
+    }
+    authoritative_control_overrides = snapshot_runtime_controls(filter_chain);
 
     return {};
 }
@@ -142,12 +273,7 @@ void FilterChainController::shutdown(const std::function<void()>& wait_for_gpu_i
     destroy_filter_chain(pending_filter_chain,
                          "Pending filter chain destroy during shutdown failed");
 
-    for (size_t i = 0; i < deferred_count; ++i) {
-        destroy_filter_chain(deferred_destroys[i].filter_chain,
-                             "Deferred filter chain destroy during shutdown failed");
-        deferred_destroys[i].destroy_after_frame = 0;
-    }
-    deferred_count = 0;
+    shutdown_retired_runtime_tracker(retired_runtimes);
 }
 
 void FilterChainController::load_shader_preset(const std::filesystem::path& new_preset_path) {
@@ -170,6 +296,8 @@ void FilterChainController::load_shader_preset(const std::filesystem::path& new_
         GOGGLES_LOG_WARN("Failed to load shader preset '{}': {} - falling back to passthrough",
                          new_preset_path.string(), load_result.error().message);
     }
+
+    authoritative_control_overrides = snapshot_runtime_controls(filter_chain);
 }
 
 auto FilterChainController::reload_shader_preset(std::filesystem::path new_preset_path,
@@ -188,11 +316,19 @@ auto FilterChainController::reload_shader_preset(std::filesystem::path new_prese
     }
 
     pending_preset_path = new_preset_path;
+    const ChainStagePolicy requested_policy{
+        .prechain_enabled = prechain_policy_enabled,
+        .effect_stage_enabled = effect_stage_policy_enabled,
+    };
+    const auto requested_prechain_resolution = source_resolution;
+    auto requested_controls = authoritative_control_overrides.empty()
+                                  ? snapshot_runtime_controls(filter_chain)
+                                  : authoritative_control_overrides;
 
     pending_load_future = util::JobSystem::submit(
         [this, build_config = std::move(config), requested_preset_path = std::move(new_preset_path),
-         requested_prechain_policy_enabled = prechain_policy_enabled,
-         requested_effect_policy_enabled = effect_stage_policy_enabled]() -> Result<void> {
+         requested_policy, requested_prechain_resolution,
+         requested_controls = std::move(requested_controls)]() -> Result<void> {
             GOGGLES_PROFILE_SCOPE("AsyncShaderLoad");
 
             auto pending_chain_result = create_filter_chain_runtime(build_config);
@@ -202,14 +338,6 @@ auto FilterChainController::reload_shader_preset(std::filesystem::path new_prese
             }
             auto pending_chain = std::move(pending_chain_result.value());
 
-            auto policy_result = pending_chain.set_stage_policy(ChainStagePolicy{
-                .prechain_enabled = requested_prechain_policy_enabled,
-                .effect_stage_enabled = requested_effect_policy_enabled,
-            });
-            if (!policy_result) {
-                return policy_result;
-            }
-
             if (!requested_preset_path.empty()) {
                 auto load_result = pending_chain.load_preset(requested_preset_path);
                 if (!load_result) {
@@ -217,6 +345,10 @@ auto FilterChainController::reload_shader_preset(std::filesystem::path new_prese
                     return load_result;
                 }
             }
+
+            GOGGLES_TRY(apply_runtime_state(pending_chain, requested_policy,
+                                            requested_prechain_resolution, requested_controls,
+                                            "Failed to restore filter control value before swap"));
 
             pending_filter_chain = std::move(pending_chain);
             pending_chain_ready.store(true, std::memory_order_release);
@@ -263,34 +395,27 @@ void FilterChainController::check_pending_chain_swap(const std::function<void()>
         }
     }
 
-    const uint64_t retire_delay = 3u;
-    const uint64_t retire_after_frame =
-        frame_count > (std::numeric_limits<uint64_t>::max() - retire_delay)
-            ? std::numeric_limits<uint64_t>::max()
-            : frame_count + retire_delay;
-
-    if (deferred_count < MAX_DEFERRED_DESTROYS) {
-        auto& deferred = deferred_destroys[deferred_count++];
-        deferred.filter_chain = std::move(filter_chain);
-        deferred.destroy_after_frame = retire_after_frame;
-    } else {
-        GOGGLES_LOG_WARN("Deferred destroy queue full, destroying immediately");
-        wait_all_frames();
-        destroy_filter_chain(filter_chain, "Failed to destroy active filter chain");
+    auto restore_result =
+        apply_runtime_state(pending_filter_chain,
+                            ChainStagePolicy{
+                                .prechain_enabled = prechain_policy_enabled,
+                                .effect_stage_enabled = effect_stage_policy_enabled,
+                            },
+                            source_resolution, authoritative_control_overrides,
+                            "Failed to restore filter control value before swap");
+    if (!restore_result) {
+        GOGGLES_LOG_ERROR("Failed to restore filter-chain runtime state before swap: {}",
+                          restore_result.error().message);
+        destroy_filter_chain(pending_filter_chain, "Failed to destroy pending filter chain");
+        pending_chain_ready.store(false, std::memory_order_release);
+        return;
     }
+
+    retire_runtime_with_bounded_fallback(retired_runtimes, std::move(filter_chain), frame_count,
+                                         wait_all_frames);
 
     filter_chain = std::move(pending_filter_chain);
-    set_stage_policy(ChainStagePolicy{
-        .prechain_enabled = prechain_policy_enabled,
-        .effect_stage_enabled = effect_stage_policy_enabled,
-    });
-    if (filter_chain && source_resolution.width > 0 && source_resolution.height > 0) {
-        auto set_result = filter_chain.set_prechain_resolution(source_resolution);
-        if (!set_result) {
-            GOGGLES_LOG_WARN("Failed to reapply prechain resolution after swap: {}",
-                             set_result.error().message);
-        }
-    }
+    authoritative_control_overrides = snapshot_runtime_controls(filter_chain);
     preset_path = pending_preset_path;
     pending_chain_ready.store(false, std::memory_order_release);
     chain_swapped.store(true, std::memory_order_release);
@@ -299,25 +424,8 @@ void FilterChainController::check_pending_chain_swap(const std::function<void()>
                      preset_path.empty() ? "(passthrough)" : preset_path.string());
 }
 
-void FilterChainController::cleanup_deferred_destroys() {
-    size_t write_idx = 0;
-    for (size_t i = 0; i < deferred_count; ++i) {
-        if (frame_count >= deferred_destroys[i].destroy_after_frame) {
-            GOGGLES_LOG_DEBUG("Destroying deferred filter chain");
-            destroy_filter_chain(deferred_destroys[i].filter_chain,
-                                 "Failed to destroy deferred filter chain");
-            deferred_destroys[i].destroy_after_frame = 0;
-        } else {
-            if (write_idx != i) {
-                deferred_destroys[write_idx].filter_chain =
-                    std::move(deferred_destroys[i].filter_chain);
-                deferred_destroys[write_idx].destroy_after_frame =
-                    deferred_destroys[i].destroy_after_frame;
-            }
-            ++write_idx;
-        }
-    }
-    deferred_count = write_idx;
+void FilterChainController::cleanup_retired_runtimes() {
+    cleanup_retired_runtime_tracker(retired_runtimes, frame_count);
 }
 
 void FilterChainController::set_stage_policy(const ChainStagePolicy& policy) {
@@ -336,30 +444,9 @@ void FilterChainController::set_stage_policy(const ChainStagePolicy& policy) {
 }
 
 void FilterChainController::set_prechain_resolution(const PrechainResolutionConfig& config) {
-    auto effective_resolution = config.requested_resolution;
-    if ((effective_resolution.width == 0u) != (effective_resolution.height == 0u)) {
-        const auto reference_resolution =
-            resolve_initial_prechain_resolution(config.fallback_resolution);
-        if (effective_resolution.width == 0u) {
-            const auto scaled_width = (static_cast<uint64_t>(reference_resolution.width) *
-                                           static_cast<uint64_t>(effective_resolution.height) +
-                                       static_cast<uint64_t>(reference_resolution.height / 2u)) /
-                                      static_cast<uint64_t>(reference_resolution.height);
-            effective_resolution.width =
-                std::max<uint32_t>(1u, static_cast<uint32_t>(scaled_width));
-        } else {
-            const auto scaled_height = (static_cast<uint64_t>(reference_resolution.height) *
-                                            static_cast<uint64_t>(effective_resolution.width) +
-                                        static_cast<uint64_t>(reference_resolution.width / 2u)) /
-                                       static_cast<uint64_t>(reference_resolution.width);
-            effective_resolution.height =
-                std::max<uint32_t>(1u, static_cast<uint32_t>(scaled_height));
-        }
-    }
-
-    source_resolution = effective_resolution;
-    if (filter_chain && effective_resolution.width > 0u && effective_resolution.height > 0u) {
-        auto set_result = filter_chain.set_prechain_resolution(effective_resolution);
+    source_resolution = config.requested_resolution;
+    if (filter_chain) {
+        auto set_result = filter_chain.set_prechain_resolution(config.requested_resolution);
         if (!set_result) {
             GOGGLES_LOG_WARN("Failed to set prechain resolution: {}", set_result.error().message);
         }
@@ -372,17 +459,6 @@ auto FilterChainController::handle_resize(vk::Extent2D target_extent) -> Result<
     }
 
     return filter_chain.handle_resize(target_extent);
-}
-
-auto FilterChainController::resolve_initial_prechain_resolution(
-    vk::Extent2D fallback_resolution) const -> vk::Extent2D {
-    if (source_resolution.width > 0u && source_resolution.height > 0u) {
-        return source_resolution;
-    }
-    if (fallback_resolution.width > 0u && fallback_resolution.height > 0u) {
-        return fallback_resolution;
-    }
-    return vk::Extent2D{1u, 1u};
 }
 
 auto FilterChainController::current_prechain_resolution() const -> vk::Extent2D {
@@ -446,6 +522,9 @@ auto FilterChainController::set_filter_control_value(FilterControlId control_id,
         GOGGLES_LOG_WARN("Failed to set filter control value: {}", set_result.error().message);
         return false;
     }
+    if (set_result.value()) {
+        authoritative_control_overrides = snapshot_runtime_controls(filter_chain);
+    }
     return set_result.value();
 }
 
@@ -459,6 +538,9 @@ auto FilterChainController::reset_filter_control_value(FilterControlId control_i
         GOGGLES_LOG_WARN("Failed to reset filter control value: {}", reset_result.error().message);
         return false;
     }
+    if (reset_result.value()) {
+        authoritative_control_overrides = snapshot_runtime_controls(filter_chain);
+    }
     return reset_result.value();
 }
 
@@ -470,7 +552,10 @@ void FilterChainController::reset_filter_controls() {
     auto reset_result = filter_chain.reset_all_controls();
     if (!reset_result) {
         GOGGLES_LOG_WARN("Failed to reset filter controls: {}", reset_result.error().message);
+        return;
     }
+
+    authoritative_control_overrides = snapshot_runtime_controls(filter_chain);
 }
 
 } // namespace goggles::render::backend_internal

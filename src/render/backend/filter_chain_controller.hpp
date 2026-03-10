@@ -10,13 +10,30 @@
 #include <render/chain/filter_controls.hpp>
 #include <render/chain/vulkan_context.hpp>
 #include <util/error.hpp>
+#include <vector>
 #include <vulkan/vulkan.hpp>
 
 namespace goggles::render::backend_internal {
 
 /// @brief Backend-side filter coordination state reserved for the future seam.
 struct FilterChainController {
-    static constexpr size_t MAX_DEFERRED_DESTROYS = 4;
+    struct ControlOverride {
+        FilterControlId control_id = 0;
+        float value = 0.0F;
+    };
+
+    struct RetiredRuntime {
+        FilterChainRuntime filter_chain;
+        uint64_t destroy_after_frame = 0;
+    };
+
+    struct RetiredRuntimeTracker {
+        static constexpr size_t MAX_RETIRED_RUNTIMES = 4;
+        static constexpr uint64_t FALLBACK_RETIRE_DELAY_FRAMES = 3;
+
+        std::array<RetiredRuntime, MAX_RETIRED_RUNTIMES> retired_runtimes{};
+        size_t retired_count = 0;
+    };
 
     using BoundaryVulkanContext = goggles::render::VulkanContext;
 
@@ -30,14 +47,8 @@ struct FilterChainController {
         vk::Extent2D initial_prechain_resolution;
     };
 
-    struct DeferredDestroy {
-        FilterChainRuntime filter_chain;
-        uint64_t destroy_after_frame = 0;
-    };
-
     struct PrechainResolutionConfig {
         vk::Extent2D requested_resolution;
-        vk::Extent2D fallback_resolution;
     };
 
     [[nodiscard]] auto recreate_filter_chain(const RuntimeBuildConfig& config) -> Result<void>;
@@ -49,14 +60,12 @@ struct FilterChainController {
 
     void advance_frame();
     void check_pending_chain_swap(const std::function<void()>& wait_all_frames);
-    void cleanup_deferred_destroys();
+    void cleanup_retired_runtimes();
 
     void set_stage_policy(const ChainStagePolicy& policy);
     void set_prechain_resolution(const PrechainResolutionConfig& config);
     [[nodiscard]] auto handle_resize(vk::Extent2D target_extent) -> Result<void>;
 
-    [[nodiscard]] auto resolve_initial_prechain_resolution(vk::Extent2D fallback_resolution) const
-        -> vk::Extent2D;
     [[nodiscard]] auto current_prechain_resolution() const -> vk::Extent2D;
     [[nodiscard]] auto current_preset_path() const -> const std::filesystem::path& {
         return preset_path;
@@ -82,8 +91,8 @@ struct FilterChainController {
     std::atomic<bool> pending_chain_ready{false};
     std::atomic<bool> chain_swapped{false};
     std::future<Result<void>> pending_load_future;
-    std::array<DeferredDestroy, MAX_DEFERRED_DESTROYS> deferred_destroys{};
-    size_t deferred_count = 0;
+    RetiredRuntimeTracker retired_runtimes;
+    std::vector<ControlOverride> authoritative_control_overrides;
     uint64_t frame_count = 0;
     bool prechain_policy_enabled = true;
     bool effect_stage_policy_enabled = true;

@@ -1,5 +1,8 @@
 #pragma once
 
+#include "chain_controls.hpp"
+#include "chain_executor.hpp"
+#include "chain_resources.hpp"
 #include "filter_controls.hpp"
 #include "vulkan_context.hpp"
 
@@ -12,7 +15,6 @@
 
 namespace goggles::render {
 
-class FilterChainCore;
 class ShaderRuntime;
 
 struct FilterChainPaths {
@@ -21,19 +23,19 @@ struct FilterChainPaths {
 };
 
 /// @brief Boundary filter-chain API that owns runtime internals.
-class FilterChain {
+class ChainRuntime {
 public:
     [[nodiscard]] static auto create(const VulkanContext& vk_ctx, vk::Format swapchain_format,
                                      uint32_t num_sync_indices, const FilterChainPaths& paths,
                                      vk::Extent2D source_resolution = {0, 0})
-        -> ResultPtr<FilterChain>;
+        -> ResultPtr<ChainRuntime>;
 
-    ~FilterChain();
+    ~ChainRuntime();
 
-    FilterChain(const FilterChain&) = delete;
-    FilterChain& operator=(const FilterChain&) = delete;
-    FilterChain(FilterChain&&) = delete;
-    FilterChain& operator=(FilterChain&&) = delete;
+    ChainRuntime(const ChainRuntime&) = delete;
+    ChainRuntime& operator=(const ChainRuntime&) = delete;
+    ChainRuntime(ChainRuntime&&) = delete;
+    ChainRuntime& operator=(ChainRuntime&&) = delete;
 
     void shutdown();
 
@@ -59,13 +61,12 @@ public:
     void reset_controls();
 
 private:
-    FilterChain() = default;
-
-    [[nodiscard]] auto collect_prechain_controls() const -> std::vector<FilterControlDescriptor>;
-    [[nodiscard]] auto collect_effect_controls() const -> std::vector<FilterControlDescriptor>;
+    ChainRuntime() = default;
 
     std::unique_ptr<ShaderRuntime> m_shader_runtime;
-    std::unique_ptr<FilterChainCore> m_filter_chain;
+    std::unique_ptr<ChainResources> m_resources;
+    ChainExecutor m_executor;
+    ChainControls m_controls;
     bool m_prechain_policy_enabled = true;
     bool m_effect_stage_policy_enabled = true;
 };

@@ -5,8 +5,11 @@ add_library(goggles_render_chain_obj OBJECT
     preset_parser.cpp
     filter_pass.cpp
     framebuffer.cpp
-    filter_chain_core.cpp
-    filter_chain.cpp
+    chain_runtime.cpp
+    chain_builder.cpp
+    chain_resources.cpp
+    chain_executor.cpp
+    chain_controls.cpp
     api/c/goggles_filter_chain.cpp
     api/cpp/goggles_filter_chain.cpp
     filter_controls.cpp

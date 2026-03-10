@@ -421,7 +421,9 @@ GOGGLES_CHAIN_API goggles_chain_status_t GOGGLES_CHAIN_CALL goggles_chain_stage_
 
 /// @brief Set the pre-chain resolution policy.
 /// @param chain Provide a live runtime in `CREATED` or `READY` state.
-/// @param resolution Provide non-zero width and height.
+/// @param resolution Provide an explicit extent, or set one axis to `0` to
+/// preserve source aspect from the other axis. Set both axes to `0` to disable
+/// pre-chain downsampling.
 /// @return Return `GOGGLES_CHAIN_STATUS_OK` on success.
 GOGGLES_CHAIN_API goggles_chain_status_t GOGGLES_CHAIN_CALL
 goggles_chain_prechain_resolution_set(goggles_chain_t* chain, goggles_chain_extent2d_t resolution);

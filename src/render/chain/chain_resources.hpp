@@ -1,11 +1,14 @@
 #pragma once
 
+#include "chain_builder.hpp"
+#include "downsample_pass.hpp"
 #include "filter_pass.hpp"
 #include "frame_history.hpp"
 #include "framebuffer.hpp"
 #include "output_pass.hpp"
 #include "pass.hpp"
 #include "preset_parser.hpp"
+#include "vulkan_context.hpp"
 
 #include <atomic>
 #include <memory>
@@ -26,53 +29,42 @@ struct ParameterInfo {
     float step;
 };
 
-/// @brief Texture plus sampler bound into a filter chain.
-struct LoadedTexture {
-    TextureData data;
-    vk::Sampler sampler;
-};
-
 /// @brief Viewport and source extents used for framebuffer sizing.
 struct FramebufferExtents {
     vk::Extent2D viewport;
     vk::Extent2D source;
 };
 
-/// @brief Internal multi-pass shader pipeline configured from a preset file.
-class FilterChainCore {
+/// @brief Owns all mutable GPU allocations for the filter chain.
+class ChainResources {
 public:
-    /// @brief Creates a filter chain and its passes for the given swapchain format.
-    /// @param source_resolution Optional pre-chain target resolution (0,0 = disabled).
-    /// @return A filter chain or an error.
     [[nodiscard]] static auto create(const VulkanContext& vk_ctx, vk::Format swapchain_format,
                                      uint32_t num_sync_indices, ShaderRuntime& shader_runtime,
                                      const std::filesystem::path& shader_dir,
                                      vk::Extent2D source_resolution = {0, 0})
-        -> ResultPtr<FilterChainCore>;
+        -> ResultPtr<ChainResources>;
 
-    ~FilterChainCore();
+    ~ChainResources();
 
-    FilterChainCore(const FilterChainCore&) = delete;
-    FilterChainCore& operator=(const FilterChainCore&) = delete;
-    FilterChainCore(FilterChainCore&&) = delete;
-    FilterChainCore& operator=(FilterChainCore&&) = delete;
+    ChainResources(const ChainResources&) = delete;
+    ChainResources& operator=(const ChainResources&) = delete;
+    ChainResources(ChainResources&&) = delete;
+    ChainResources& operator=(ChainResources&&) = delete;
 
-    /// @brief Loads a preset and rebuilds passes and resources.
-    [[nodiscard]] auto load_preset(const std::filesystem::path& preset_path) -> Result<void>;
+    void shutdown();
+    void install(CompiledChain&& compiled);
 
-    /// @brief Records all passes for the current frame.
-    void record(vk::CommandBuffer cmd, vk::Image original_image, vk::ImageView original_view,
-                vk::Extent2D original_extent, vk::ImageView swapchain_view,
-                vk::Extent2D viewport_extent, uint32_t frame_index,
-                ScaleMode scale_mode = ScaleMode::stretch, uint32_t integer_scale = 0);
+    [[nodiscard]] auto ensure_framebuffers(const FramebufferExtents& extents,
+                                           vk::Extent2D viewport_extent) -> Result<void>;
+    [[nodiscard]] auto ensure_frame_history(vk::Extent2D extent) -> Result<void>;
+    [[nodiscard]] auto ensure_prechain_passes(vk::Extent2D captured_extent) -> Result<void>;
+    void apply_prechain_parameters();
+    void cleanup_texture_registry();
 
-    /// @brief Handles viewport resize and resizes framebuffers as needed.
     [[nodiscard]] auto handle_resize(vk::Extent2D new_viewport_extent) -> Result<void>;
 
-    /// @brief Releases GPU resources and pass state.
-    void shutdown();
-
-    [[nodiscard]] auto pass_count() const -> size_t { return m_passes.size(); }
+    void set_prechain_resolution(uint32_t width, uint32_t height);
+    [[nodiscard]] auto get_prechain_resolution() const -> vk::Extent2D;
 
     void set_bypass(bool enabled) { m_bypass_enabled.store(enabled, std::memory_order_relaxed); }
     [[nodiscard]] auto is_bypass() const -> bool {
@@ -85,61 +77,20 @@ public:
         return m_prechain_enabled.load(std::memory_order_relaxed);
     }
 
-    /// @brief Computes the output extent for a pass given input sizes and scaling rules.
+    [[nodiscard]] auto pass_count() const -> size_t { return m_passes.size(); }
+
     [[nodiscard]] static auto calculate_pass_output_size(const ShaderPassConfig& pass_config,
                                                          vk::Extent2D source_extent,
                                                          vk::Extent2D viewport_extent)
         -> vk::Extent2D;
 
-    /// @brief Returns all parameters exposed by the chain.
+    // Parameter management
     [[nodiscard]] auto get_all_parameters() const -> std::vector<ParameterInfo>;
-    /// @brief Overrides a parameter value by name.
     void set_parameter(const std::string& name, float value);
-    /// @brief Resets a parameter override by name.
     void reset_parameter(const std::string& name);
-    /// @brief Clears all parameter overrides.
     void clear_parameter_overrides();
-
-    /// @brief Updates the pre-chain target resolution at runtime.
-    /// @param width Target width (0 = aspect-preserve from height).
-    /// @param height Target height (0 = aspect-preserve from width).
-    void set_prechain_resolution(uint32_t width, uint32_t height);
-    /// @brief Returns the current pre-chain target resolution.
-    [[nodiscard]] auto get_prechain_resolution() const -> vk::Extent2D;
-
-    /// @brief Returns parameters exposed by pre-chain passes.
     [[nodiscard]] auto get_prechain_parameters() const -> std::vector<ShaderParameter>;
-    /// @brief Sets a pre-chain pass parameter value.
     void set_prechain_parameter(const std::string& name, float value);
-
-private:
-    FilterChainCore() = default;
-    [[nodiscard]] auto ensure_framebuffers(const FramebufferExtents& extents,
-                                           vk::Extent2D viewport_extent) -> Result<void>;
-    [[nodiscard]] auto ensure_frame_history(vk::Extent2D extent) -> Result<void>;
-
-    [[nodiscard]] auto load_preset_textures() -> Result<void>;
-    [[nodiscard]] auto create_texture_sampler(const TextureConfig& config) const
-        -> Result<vk::Sampler>;
-    void cleanup_texture_registry();
-
-    void bind_pass_textures(FilterPass& pass, size_t pass_index, vk::ImageView original_view,
-                            vk::Extent2D original_extent, vk::ImageView source_view);
-    void copy_feedback_framebuffers(vk::CommandBuffer cmd);
-
-    [[nodiscard]] auto ensure_prechain_passes(vk::Extent2D captured_extent) -> Result<void>;
-    void apply_prechain_parameters();
-
-    struct ChainResult {
-        vk::ImageView view;
-        vk::Extent2D extent;
-    };
-    auto record_prechain(vk::CommandBuffer cmd, vk::ImageView original_view,
-                         vk::Extent2D original_extent, uint32_t frame_index) -> ChainResult;
-    void record_postchain(vk::CommandBuffer cmd, vk::ImageView source_view,
-                          vk::Extent2D source_extent, vk::ImageView target_view,
-                          vk::Extent2D target_extent, uint32_t frame_index, ScaleMode scale_mode,
-                          uint32_t integer_scale);
 
     VulkanContext m_vk_ctx;
     vk::Format m_swapchain_format = vk::Format::eUndefined;
@@ -169,7 +120,7 @@ private:
     std::atomic<bool> m_prechain_enabled{true};
 
     // Pre-chain stage
-    vk::Extent2D m_prechain_requested_resolution; // 0,0 = disabled
+    vk::Extent2D m_prechain_requested_resolution;
     vk::Extent2D m_prechain_resolved_resolution;
     vk::Extent2D m_prechain_last_captured_extent;
     std::vector<ShaderParameter> m_prechain_parameters;
@@ -179,6 +130,9 @@ private:
     // Post-chain stage
     std::vector<std::unique_ptr<Pass>> m_postchain_passes;
     std::vector<std::unique_ptr<Framebuffer>> m_postchain_framebuffers;
+
+private:
+    ChainResources() = default;
 };
 
 } // namespace goggles::render

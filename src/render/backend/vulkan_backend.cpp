@@ -78,7 +78,6 @@ void VulkanBackend::initialize_settings(const RenderSettings& settings) {
     m_filter_chain_controller.set_prechain_resolution(
         backend_internal::FilterChainController::PrechainResolutionConfig{
             .requested_resolution = vk::Extent2D{settings.source_width, settings.source_height},
-            .fallback_resolution = current_filter_target_extent(),
         });
 }
 
@@ -248,7 +247,6 @@ void VulkanBackend::set_prechain_resolution(uint32_t width, uint32_t height) {
     m_filter_chain_controller.set_prechain_resolution(
         backend_internal::FilterChainController::PrechainResolutionConfig{
             .requested_resolution = vk::Extent2D{width, height},
-            .fallback_resolution = current_filter_target_extent(),
         });
 }
 
@@ -429,7 +427,7 @@ auto VulkanBackend::render(const util::ExternalImageFrame* frame,
     }
     m_filter_chain_controller.advance_frame();
     m_filter_chain_controller.check_pending_chain_swap([this]() { wait_all_frames(); });
-    m_filter_chain_controller.cleanup_deferred_destroys();
+    m_filter_chain_controller.cleanup_retired_runtimes();
 
     if (m_render_output.is_headless()) {
         auto cmd = GOGGLES_TRY(m_render_output.prepare_headless_frame(m_vulkan_context));
@@ -595,9 +593,7 @@ auto VulkanBackend::make_filter_chain_build_config() const
         .num_sync_indices = backend_internal::RenderOutput::MAX_FRAMES_IN_FLIGHT,
         .shader_dir = m_shader_dir,
         .cache_dir = m_cache_dir,
-        .initial_prechain_resolution =
-            m_filter_chain_controller.resolve_initial_prechain_resolution(
-                current_filter_target_extent()),
+        .initial_prechain_resolution = m_filter_chain_controller.current_prechain_resolution(),
     };
 }
 
