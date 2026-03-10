@@ -16,7 +16,7 @@ flags ?=
 _check-pixi:
 	@command -v $(PIXI) >/dev/null 2>&1 || { \
 		echo "error: '$(PIXI)' not found"; \
-		echo "hint: install Pixi and run 'pixi run init' once"; \
+		echo "hint: install Pixi and rerun this command"; \
 		exit 127; \
 	}
 

@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # Pre-commit hook: format staged files only (C/C++ via clang-format, TOML via taplo).
-# Install: ln -s ../../scripts/pre-commit-format.sh .git/hooks/pre-commit
+# Invoked by the managed git hook wrapper installed via `pixi run init`.
 
 set -euo pipefail
 
-SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
-ROOT_DIR="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
+ROOT_DIR="$(git rev-parse --show-toplevel)"
 cd "$ROOT_DIR"
 
 # Use pixi run for formatting tools

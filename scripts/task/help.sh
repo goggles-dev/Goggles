@@ -22,7 +22,7 @@ Utilities
   pixi run clean [-p PRESET]              Remove build directories
   pixi run distclean                      Remove all build directories
   pixi run shader-fetch                   Download RetroArch slang shaders
-  pixi run init                           Install or repair managed pre-commit hook
+  pixi run init [-- --check]              Install, repair, or check the optional managed pre-commit hook
 
 Options
   -p, --preset PRESET   Build preset (default: debug)
