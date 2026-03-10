@@ -113,7 +113,7 @@ TEST_CASE("Filter chain boundary control contract coverage", "[filter_chain][bou
     REQUIRE(app_text->find("filter_chain(") == std::string::npos);
 
     const auto chain_path =
-        std::filesystem::path(GOGGLES_SOURCE_DIR) / "src/render/chain/filter_chain.cpp";
+        std::filesystem::path(GOGGLES_SOURCE_DIR) / "src/render/chain/chain_controls.cpp";
     auto chain_text = read_text_file(chain_path);
     REQUIRE(chain_text.has_value());
 
@@ -129,9 +129,9 @@ TEST_CASE("Filter chain boundary control contract coverage", "[filter_chain][bou
     REQUIRE(backend_context_text->find("boundary_context(") != std::string::npos);
 
     const auto prechain_list_pos =
-        chain_text->find("auto prechain_controls = collect_prechain_controls();");
-    const auto effect_list_pos =
-        chain_text->find("auto effect_controls = collect_effect_controls();", prechain_list_pos);
+        chain_text->find("auto prechain_controls = collect_prechain_controls(resources);");
+    const auto effect_list_pos = chain_text->find(
+        "auto effect_controls = collect_effect_controls(resources);", prechain_list_pos);
     const auto merge_pos = chain_text->find("prechain_controls.insert(", effect_list_pos);
     REQUIRE(prechain_list_pos != std::string::npos);
     REQUIRE(effect_list_pos != std::string::npos);
@@ -205,7 +205,7 @@ TEST_CASE("Filter chain boundary control contract coverage", "[filter_chain][bou
 
     const auto source_files = collect_app_ui_sources();
     const std::array<std::string_view, 3> forbidden_patterns = {
-        "render/chain/filter_chain.hpp",
+        "render/chain/chain_runtime.hpp",
         "render/shader/",
         "filter_chain(",
     };
@@ -259,12 +259,37 @@ TEST_CASE("Async swap and resize safety contract coverage", "[filter_chain][asyn
     REQUIRE(failure_clear_ready_pos < failure_return_pos);
     REQUIRE(failure_return_pos < success_signal_pos);
 
-    const auto swap_reapply_resolution_pos = controller_text->find(
-        "filter_chain.set_prechain_resolution(source_resolution)", check_swap_pos);
-    REQUIRE(swap_reapply_resolution_pos != std::string::npos);
-    REQUIRE(swap_reapply_resolution_pos < success_signal_pos);
+    const auto swap_apply_state_pos =
+        controller_text->find("apply_runtime_state(filter_chain,", check_swap_pos);
+    const auto swap_authoritative_controls_pos = controller_text->find(
+        "source_resolution, authoritative_control_overrides,", swap_apply_state_pos);
+    REQUIRE(swap_apply_state_pos != std::string::npos);
+    REQUIRE(swap_authoritative_controls_pos != std::string::npos);
+    REQUIRE(swap_apply_state_pos < success_signal_pos);
+    REQUIRE(swap_authoritative_controls_pos < success_signal_pos);
 
-    REQUIRE(controller_text->find("deferred.destroy_after_frame = retire_after_frame") !=
+    REQUIRE(controller_text->find("requested_controls = authoritative_control_overrides.empty()") !=
+            std::string::npos);
+    REQUIRE(controller_text->find("apply_runtime_state(pending_chain, requested_policy,") !=
+            std::string::npos);
+    REQUIRE(controller_text->find("authoritative_control_overrides = snapshot_runtime_controls(") !=
+            std::string::npos);
+    REQUIRE(controller_text->find("source_resolution = config.requested_resolution;") !=
+            std::string::npos);
+    REQUIRE(controller_text->find(
+                "filter_chain.set_prechain_resolution(config.requested_resolution)") !=
+            std::string::npos);
+    REQUIRE(controller_text->find("resolve_initial_prechain_resolution") == std::string::npos);
+
+    REQUIRE(controller_text->find("retire_runtime_with_bounded_fallback(") != std::string::npos);
+    REQUIRE(
+        controller_text->find("cleanup_retired_runtime_tracker(retired_runtimes, frame_count);") !=
+        std::string::npos);
+    REQUIRE(controller_text->find("shutdown_retired_runtime_tracker(retired_runtimes);") !=
+            std::string::npos);
+    REQUIRE(controller_text->find("RetiredRuntimeTracker::FALLBACK_RETIRE_DELAY_FRAMES") !=
+            std::string::npos);
+    REQUIRE(controller_text->find("RetiredRuntimeTracker::MAX_RETIRED_RUNTIMES") !=
             std::string::npos);
     REQUIRE(backend_text->find("m_filter_chain_controller.handle_resize(") != std::string::npos);
     REQUIRE(backend_text->find("m_external_frame_importer.import_external_image") !=
@@ -277,6 +302,8 @@ TEST_CASE("Async swap and resize safety contract coverage", "[filter_chain][asyn
     REQUIRE(backend_text->find("m_vulkan_context.headless") == std::string::npos);
     REQUIRE(backend_text->find("m_render_output.target_extent()") != std::string::npos);
     REQUIRE(backend_text->find("m_render_output.clear_resize_request()") != std::string::npos);
+    REQUIRE(backend_text->find("m_filter_chain_controller.current_prechain_resolution()") !=
+            std::string::npos);
     REQUIRE(render_output_text->find("auto RenderOutput::acquire_next_image") != std::string::npos);
     REQUIRE(render_output_text->find("auto RenderOutput::submit_and_present") != std::string::npos);
     REQUIRE(render_output_text->find("auto RenderOutput::submit_headless") != std::string::npos);

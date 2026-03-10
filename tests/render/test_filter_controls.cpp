@@ -1,3 +1,4 @@
+#include "render/chain/chain_controls.hpp"
 #include "render/chain/filter_controls.hpp"
 
 #include <catch2/catch_approx.hpp>
@@ -67,4 +68,32 @@ TEST_CASE("Pre-chain filter_type range remains backward-compatible", "[filter_ch
     REQUIRE(clamp_filter_control_value(descriptor, 1.0F) == Catch::Approx(1.0F));
     REQUIRE(clamp_filter_control_value(descriptor, 2.0F) == Catch::Approx(2.0F));
     REQUIRE(clamp_filter_control_value(descriptor, 4.0F) == Catch::Approx(2.0F));
+}
+
+TEST_CASE("ChainControls replay cache keeps stage-scoped normalized overrides",
+          "[filter_chain][controls]") {
+    ChainControls controls;
+
+    FilterControlDescriptor prechain_descriptor{};
+    prechain_descriptor.stage = FilterControlStage::prechain;
+    prechain_descriptor.name = "filter_type";
+    prechain_descriptor.min_value = 0.0F;
+    prechain_descriptor.max_value = 2.0F;
+
+    FilterControlDescriptor effect_descriptor{};
+    effect_descriptor.stage = FilterControlStage::effect;
+    effect_descriptor.name = "SCAN_BLUR";
+    effect_descriptor.min_value = 0.0F;
+    effect_descriptor.max_value = 1.0F;
+
+    controls.remember_control_value(prechain_descriptor, 1.6F);
+    controls.remember_control_value(effect_descriptor, 2.5F);
+
+    REQUIRE(controls.replay_value_for(prechain_descriptor).value() == Catch::Approx(2.0F));
+    REQUIRE(controls.replay_value_for(effect_descriptor).value() == Catch::Approx(1.0F));
+
+    controls.forget_control_value(effect_descriptor);
+
+    REQUIRE_FALSE(controls.replay_value_for(effect_descriptor).has_value());
+    REQUIRE(controls.replay_value_for(prechain_descriptor).value() == Catch::Approx(2.0F));
 }

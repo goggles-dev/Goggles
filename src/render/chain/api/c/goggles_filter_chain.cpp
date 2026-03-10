@@ -7,7 +7,7 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
-#include <render/chain/filter_chain.hpp>
+#include <render/chain/chain_runtime.hpp>
 #include <render/chain/filter_controls.hpp>
 #include <render/chain/vulkan_context.hpp>
 #include <string>
@@ -21,7 +21,7 @@ namespace {
 
 using goggles::ErrorCode;
 using goggles::ScaleMode;
-using goggles::render::FilterChain;
+using goggles::render::ChainRuntime;
 using goggles::render::FilterChainPaths;
 using goggles::render::FilterControlDescriptor;
 using goggles::render::FilterControlStage;
@@ -50,7 +50,7 @@ struct LastErrorInfo {
 
 struct goggles_chain {
     uint64_t magic = CHAIN_MAGIC;
-    std::unique_ptr<FilterChain> runtime;
+    std::unique_ptr<ChainRuntime> runtime;
     vk::Device device;
     vk::CommandPool command_pool;
     uint32_t num_sync_indices = 0;
@@ -395,8 +395,8 @@ auto create_runtime(const goggles_chain_vk_context_t* vk_context, const CreateIn
     };
 
     auto runtime_result =
-        FilterChain::create(context, input.target_format, input.num_sync_indices, paths,
-                            to_vulkan_extent(input.initial_prechain_resolution));
+        ChainRuntime::create(context, input.target_format, input.num_sync_indices, paths,
+                             to_vulkan_extent(input.initial_prechain_resolution));
     if (!runtime_result) {
         device.destroyCommandPool(command_pool);
         return map_error_code(runtime_result.error().code);
@@ -526,10 +526,6 @@ auto goggles_chain_create_vk(const goggles_chain_vk_context_t* vk_context,
             create_info->num_sync_indices > MAX_SYNC_INDICES) {
             return GOGGLES_CHAIN_STATUS_INVALID_ARGUMENT;
         }
-        if (!is_valid_extent(create_info->initial_prechain_resolution)) {
-            return GOGGLES_CHAIN_STATUS_INVALID_ARGUMENT;
-        }
-
         std::string shader_dir;
         std::string cache_dir;
         if (!copy_required_utf8_cstr(create_info->shader_dir_utf8, &shader_dir) ||
@@ -580,10 +576,6 @@ auto goggles_chain_create_vk_ex(const goggles_chain_vk_context_t* vk_context,
             create_info->num_sync_indices > MAX_SYNC_INDICES) {
             return GOGGLES_CHAIN_STATUS_INVALID_ARGUMENT;
         }
-        if (!is_valid_extent(create_info->initial_prechain_resolution)) {
-            return GOGGLES_CHAIN_STATUS_INVALID_ARGUMENT;
-        }
-
         std::string shader_dir;
         std::string cache_dir;
         if (!copy_required_utf8_span(create_info->shader_dir_utf8, create_info->shader_dir_len,
@@ -795,10 +787,6 @@ auto goggles_chain_prechain_resolution_set(goggles_chain_t* chain,
     const auto state_status = ensure_chain_state(chain, false);
     if (state_status != GOGGLES_CHAIN_STATUS_OK) {
         return state_status;
-    }
-
-    if (!is_valid_extent(resolution)) {
-        return fail_chain(chain, GOGGLES_CHAIN_STATUS_INVALID_ARGUMENT, ErrorSubsystem::validation);
     }
 
     chain->runtime->set_prechain_resolution(to_vulkan_extent(resolution));

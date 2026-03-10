@@ -540,6 +540,27 @@ TEST_CASE("Filter chain C API lifecycle and out-param safety", "[filter_chain_c_
     REQUIRE(prechain_resolution.width == 2u);
     REQUIRE(prechain_resolution.height == 3u);
 
+    REQUIRE(goggles_chain_prechain_resolution_set(chain, {.width = 0u, .height = 240u}) ==
+            GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(goggles_chain_prechain_resolution_get(chain, &prechain_resolution) ==
+            GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(prechain_resolution.width == 0u);
+    REQUIRE(prechain_resolution.height == 240u);
+
+    REQUIRE(goggles_chain_prechain_resolution_set(chain, {.width = 320u, .height = 0u}) ==
+            GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(goggles_chain_prechain_resolution_get(chain, &prechain_resolution) ==
+            GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(prechain_resolution.width == 320u);
+    REQUIRE(prechain_resolution.height == 0u);
+
+    REQUIRE(goggles_chain_prechain_resolution_set(chain, {.width = 0u, .height = 0u}) ==
+            GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(goggles_chain_prechain_resolution_get(chain, &prechain_resolution) ==
+            GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(prechain_resolution.width == 0u);
+    REQUIRE(prechain_resolution.height == 0u);
+
     goggles_chain_control_snapshot_t* snapshot = nullptr;
     REQUIRE(goggles_chain_control_list(chain, &snapshot) == GOGGLES_CHAIN_STATUS_NOT_INITIALIZED);
     REQUIRE(snapshot == nullptr);
@@ -605,14 +626,32 @@ TEST_CASE("Filter chain C API validation matrix", "[filter_chain_c_api][validati
     REQUIRE(goggles_chain_create_vk(&vk_context, &invalid, &runtime) ==
             GOGGLES_CHAIN_STATUS_INVALID_ARGUMENT);
 
-    invalid = create_info;
-    invalid.initial_prechain_resolution = {.width = 0u, .height = 1u};
-    REQUIRE(goggles_chain_create_vk(&vk_context, &invalid, &runtime) ==
-            GOGGLES_CHAIN_STATUS_INVALID_ARGUMENT);
+    auto height_only_prechain = create_info;
+    runtime = reinterpret_cast<goggles_chain_t*>(0x1);
+    height_only_prechain.initial_prechain_resolution = {.width = 0u, .height = 1u};
+    REQUIRE(goggles_chain_create_vk(&vk_context, &height_only_prechain, &runtime) ==
+            GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(runtime != nullptr);
+    REQUIRE(goggles_chain_destroy(&runtime) == GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(runtime == nullptr);
 
-    invalid.initial_prechain_resolution = {.width = 1u, .height = 0u};
-    REQUIRE(goggles_chain_create_vk(&vk_context, &invalid, &runtime) ==
-            GOGGLES_CHAIN_STATUS_INVALID_ARGUMENT);
+    auto width_only_prechain = create_info;
+    runtime = reinterpret_cast<goggles_chain_t*>(0x1);
+    width_only_prechain.initial_prechain_resolution = {.width = 1u, .height = 0u};
+    REQUIRE(goggles_chain_create_vk(&vk_context, &width_only_prechain, &runtime) ==
+            GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(runtime != nullptr);
+    REQUIRE(goggles_chain_destroy(&runtime) == GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(runtime == nullptr);
+
+    auto zero_prechain = create_info;
+    runtime = reinterpret_cast<goggles_chain_t*>(0x1);
+    zero_prechain.initial_prechain_resolution = {.width = 0u, .height = 0u};
+    REQUIRE(goggles_chain_create_vk(&vk_context, &zero_prechain, &runtime) ==
+            GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(runtime != nullptr);
+    REQUIRE(goggles_chain_destroy(&runtime) == GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(runtime == nullptr);
 
     invalid = create_info;
     invalid.target_format = VK_FORMAT_UNDEFINED;
@@ -663,6 +702,33 @@ TEST_CASE("Filter chain C API validation matrix", "[filter_chain_c_api][validati
     invalid_ex.cache_dir_len = 2u;
     REQUIRE(goggles_chain_create_vk_ex(&vk_context, &invalid_ex, &runtime) ==
             GOGGLES_CHAIN_STATUS_INVALID_ARGUMENT);
+
+    auto zero_prechain_ex = create_info_ex;
+    runtime = reinterpret_cast<goggles_chain_t*>(0x1);
+    zero_prechain_ex.initial_prechain_resolution = {.width = 0u, .height = 0u};
+    REQUIRE(goggles_chain_create_vk_ex(&vk_context, &zero_prechain_ex, &runtime) ==
+            GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(runtime != nullptr);
+    REQUIRE(goggles_chain_destroy(&runtime) == GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(runtime == nullptr);
+
+    auto height_only_prechain_ex = create_info_ex;
+    runtime = reinterpret_cast<goggles_chain_t*>(0x1);
+    height_only_prechain_ex.initial_prechain_resolution = {.width = 0u, .height = 1u};
+    REQUIRE(goggles_chain_create_vk_ex(&vk_context, &height_only_prechain_ex, &runtime) ==
+            GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(runtime != nullptr);
+    REQUIRE(goggles_chain_destroy(&runtime) == GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(runtime == nullptr);
+
+    auto width_only_prechain_ex = create_info_ex;
+    runtime = reinterpret_cast<goggles_chain_t*>(0x1);
+    width_only_prechain_ex.initial_prechain_resolution = {.width = 1u, .height = 0u};
+    REQUIRE(goggles_chain_create_vk_ex(&vk_context, &width_only_prechain_ex, &runtime) ==
+            GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(runtime != nullptr);
+    REQUIRE(goggles_chain_destroy(&runtime) == GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(runtime == nullptr);
 
     auto no_cache_create = create_info;
     runtime = reinterpret_cast<goggles_chain_t*>(0x1);

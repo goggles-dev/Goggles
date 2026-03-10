@@ -1,4 +1,4 @@
-#include "render/chain/filter_chain_core.hpp"
+#include "render/chain/chain_resources.hpp"
 #include "render/chain/semantic_binder.hpp"
 
 #include <catch2/catch_approx.hpp>
@@ -83,14 +83,14 @@ auto read_text_file(const std::filesystem::path& path) -> std::optional<std::str
 
 TEST_CASE("FilterChain stage ordering parity", "[filter_chain][pipeline]") {
     const auto source_path =
-        std::filesystem::path(GOGGLES_SOURCE_DIR) / "src/render/chain/filter_chain_core.cpp";
+        std::filesystem::path(GOGGLES_SOURCE_DIR) / "src/render/chain/chain_executor.cpp";
     auto source_text = read_text_file(source_path);
     REQUIRE(source_text.has_value());
 
-    const auto prechain_pos = source_text->find("record_prechain(cmd");
+    const auto prechain_pos = source_text->find("record_prechain(resources, cmd");
     const auto effect_pos =
-        source_text->find("for (size_t i = 0; i < m_passes.size(); ++i)", prechain_pos);
-    const auto postchain_pos = source_text->find("record_postchain(cmd", effect_pos);
+        source_text->find("for (size_t i = 0; i < resources.m_passes.size(); ++i)", prechain_pos);
+    const auto postchain_pos = source_text->find("record_postchain(resources, cmd", effect_pos);
 
     REQUIRE(prechain_pos != std::string::npos);
     REQUIRE(effect_pos != std::string::npos);
@@ -101,13 +101,14 @@ TEST_CASE("FilterChain stage ordering parity", "[filter_chain][pipeline]") {
 
 TEST_CASE("Feedback layout continuity safeguards", "[filter_chain][feedback]") {
     const auto source_path =
-        std::filesystem::path(GOGGLES_SOURCE_DIR) / "src/render/chain/filter_chain_core.cpp";
+        std::filesystem::path(GOGGLES_SOURCE_DIR) / "src/render/chain/chain_executor.cpp";
     auto source_text = read_text_file(source_path);
     REQUIRE(source_text.has_value());
 
     REQUIRE(source_text->find("pre[1].oldLayout = vk::ImageLayout::eShaderReadOnlyOptimal;") !=
             std::string::npos);
-    REQUIRE(source_text->find("m_feedback_initialized[pass_idx] = true;") != std::string::npos);
+    REQUIRE(source_text->find("resources.m_feedback_initialized[pass_idx] = true;") !=
+            std::string::npos);
 }
 
 TEST_CASE("OriginalHistory sampler name parsing", "[filter_chain][history]") {
@@ -156,7 +157,7 @@ TEST_CASE("FilterChain size calculation", "[filter_chain]") {
         config.scale_x = 2.0F;
         config.scale_y = 2.0F;
 
-        auto result = FilterChainCore::calculate_pass_output_size(config, source, viewport);
+        auto result = ChainResources::calculate_pass_output_size(config, source, viewport);
         REQUIRE(result.width == 512);
         REQUIRE(result.height == 448);
     }
@@ -167,7 +168,7 @@ TEST_CASE("FilterChain size calculation", "[filter_chain]") {
         config.scale_x = 0.5F;
         config.scale_y = 0.5F;
 
-        auto result = FilterChainCore::calculate_pass_output_size(config, source, viewport);
+        auto result = ChainResources::calculate_pass_output_size(config, source, viewport);
         REQUIRE(result.width == 960);
         REQUIRE(result.height == 540);
     }
@@ -178,7 +179,7 @@ TEST_CASE("FilterChain size calculation", "[filter_chain]") {
         config.scale_x = 640.0F;
         config.scale_y = 480.0F;
 
-        auto result = FilterChainCore::calculate_pass_output_size(config, source, viewport);
+        auto result = ChainResources::calculate_pass_output_size(config, source, viewport);
         REQUIRE(result.width == 640);
         REQUIRE(result.height == 480);
     }
@@ -189,7 +190,7 @@ TEST_CASE("FilterChain size calculation", "[filter_chain]") {
         config.scale_x = 4.0F;
         config.scale_y = 1.0F;
 
-        auto result = FilterChainCore::calculate_pass_output_size(config, source, viewport);
+        auto result = ChainResources::calculate_pass_output_size(config, source, viewport);
         REQUIRE(result.width == 1024);
         REQUIRE(result.height == 1080);
     }
@@ -200,7 +201,7 @@ TEST_CASE("FilterChain size calculation", "[filter_chain]") {
         config.scale_x = 0.0F;
         config.scale_y = 0.0F;
 
-        auto result = FilterChainCore::calculate_pass_output_size(config, source, viewport);
+        auto result = ChainResources::calculate_pass_output_size(config, source, viewport);
         REQUIRE(result.width == 1);
         REQUIRE(result.height == 1);
     }
@@ -211,7 +212,7 @@ TEST_CASE("FilterChain size calculation", "[filter_chain]") {
         config.scale_x = 1.5F;
         config.scale_y = 1.5F;
 
-        auto result = FilterChainCore::calculate_pass_output_size(config, source, viewport);
+        auto result = ChainResources::calculate_pass_output_size(config, source, viewport);
         REQUIRE(result.width == 384);
         REQUIRE(result.height == 336);
     }
@@ -249,7 +250,7 @@ TEST_CASE("PassFeedback# sampler name parsing", "[filter_chain][shader_spec]") {
 TEST_CASE("Semantic binding parity", "[filter_chain][shader_spec]") {
     SECTION("Source semantic remains explicit") {
         const auto source_path =
-            std::filesystem::path(GOGGLES_SOURCE_DIR) / "src/render/chain/filter_chain_core.cpp";
+            std::filesystem::path(GOGGLES_SOURCE_DIR) / "src/render/chain/chain_executor.cpp";
         auto source_text = read_text_file(source_path);
         REQUIRE(source_text.has_value());
         REQUIRE(source_text->find("\"Source\"") != std::string::npos);

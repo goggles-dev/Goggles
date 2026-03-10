@@ -91,7 +91,7 @@ TEST_CASE("Vulkan backend seam declarations stay compile-safe", "[vulkan-backend
     REQUIRE(importer.wait_semaphore(0) == vk::Semaphore{});
     REQUIRE(controller.prechain_policy_enabled);
     REQUIRE(controller.effect_stage_policy_enabled);
-    REQUIRE(controller.deferred_count == 0u);
+    REQUIRE(controller.retired_runtimes.retired_count == 0u);
     REQUIRE(controller.pending_preset_path.empty());
     REQUIRE(boundary_context.command_pool == vk::CommandPool{});
     REQUIRE(boundary_context.device == vk::Device{});
@@ -181,9 +181,18 @@ TEST_CASE("Vulkan backend teardown audit hooks stay aligned with shutdown order"
         find_text(*controller_text, "destroy_filter_chain(filter_chain", wait_idle_pos);
     const auto pending_chain_pos =
         find_text(*controller_text, "destroy_filter_chain(pending_filter_chain", active_chain_pos);
-    const auto deferred_chain_pos =
-        find_text(*controller_text, "destroy_filter_chain(deferred_destroys[i].filter_chain",
-                  pending_chain_pos);
+    const auto retired_tracker_shutdown_pos = find_text(
+        *controller_text, "shutdown_retired_runtime_tracker(retired_runtimes);", pending_chain_pos);
+    const auto retired_helper_pos =
+        find_text(*controller_text, "void shutdown_retired_runtime_tracker(");
+    const auto retired_chain_pos = find_text(
+        *controller_text, "destroy_filter_chain(retired_runtimes.retired_runtimes[i].filter_chain",
+        retired_helper_pos);
+    const auto retired_reset_pos =
+        find_text(*controller_text, "retired_runtimes.retired_runtimes[i].destroy_after_frame = 0;",
+                  retired_chain_pos);
+    const auto retired_count_reset_pos =
+        find_text(*controller_text, "retired_runtimes.retired_count = 0;", retired_reset_pos);
 
     const auto output_shutdown_pos =
         find_text(*render_output_text, "void RenderOutput::destroy(VulkanContext& context)");
@@ -213,7 +222,11 @@ TEST_CASE("Vulkan backend teardown audit hooks stay aligned with shutdown order"
     REQUIRE(wait_idle_pos != std::string::npos);
     REQUIRE(active_chain_pos != std::string::npos);
     REQUIRE(pending_chain_pos != std::string::npos);
-    REQUIRE(deferred_chain_pos != std::string::npos);
+    REQUIRE(retired_tracker_shutdown_pos != std::string::npos);
+    REQUIRE(retired_helper_pos != std::string::npos);
+    REQUIRE(retired_chain_pos != std::string::npos);
+    REQUIRE(retired_reset_pos != std::string::npos);
+    REQUIRE(retired_count_reset_pos != std::string::npos);
     REQUIRE(importer_cleanup_pos != std::string::npos);
     REQUIRE(output_cleanup_pos != std::string::npos);
     REQUIRE(context_destroy_pos != std::string::npos);
@@ -232,8 +245,10 @@ TEST_CASE("Vulkan backend teardown audit hooks stay aligned with shutdown order"
     REQUIRE(clear_ready_pos < wait_idle_pos);
     REQUIRE(wait_idle_pos < active_chain_pos);
     REQUIRE(active_chain_pos < pending_chain_pos);
-    REQUIRE(pending_chain_pos < deferred_chain_pos);
-    REQUIRE(deferred_chain_pos < importer_cleanup_pos);
+    REQUIRE(pending_chain_pos < retired_tracker_shutdown_pos);
+    REQUIRE(retired_helper_pos < retired_chain_pos);
+    REQUIRE(retired_chain_pos < retired_reset_pos);
+    REQUIRE(retired_reset_pos < retired_count_reset_pos);
     REQUIRE(importer_cleanup_pos < output_cleanup_pos);
     REQUIRE(output_cleanup_pos < context_destroy_pos);
     REQUIRE(offscreen_destroy_pos < frame_destroy_pos);
