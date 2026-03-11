@@ -45,7 +45,8 @@ receive incorrect gamma through the compositor capture path.
   - `src/compositor/compositor_server.cpp` — fix `setup_output()` format negotiation
   - `src/app/application.cpp` — remove `SurfaceCapturePath::vulkan` reference in
     `sync_surface_filters()`
-  - `config/goggles.toml` — remove any WSI proxy config keys if present
+  - `config/goggles.template.toml` and runtime config bootstrap/loading flow — remove any WSI
+    proxy config keys if present for `${XDG_CONFIG_HOME:-$HOME/.config}/goggles/goggles.toml`
 - No new dependencies
 - **BREAKING:** `GOGGLES_WSI_PROXY=1` launch scripts stop working silently (env var ignored or
   logged as unknown)

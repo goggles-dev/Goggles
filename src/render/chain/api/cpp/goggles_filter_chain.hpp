@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <render/chain/api/c/goggles_filter_chain.h>
 #include <string>
 #include <util/error.hpp>
 #include <vector>
@@ -29,6 +30,10 @@ namespace goggles::render {
 enum class ChainScaleMode : std::uint8_t { stretch, fit, integer };
 
 enum class ChainControlStage : std::uint8_t { prechain, effect, postchain };
+
+enum class ChainDiagnosticReportingMode : std::uint8_t { minimal, standard, investigate, forensic };
+
+enum class ChainDiagnosticPolicyMode : std::uint8_t { compatibility, strict };
 
 enum class ChainStageMask : std::uint8_t {
     none = 0u,
@@ -112,6 +117,24 @@ struct ChainControlDescriptor {
     float step = 0.0F;
 };
 
+struct ChainDiagnosticsCreateInfo {
+    ChainDiagnosticReportingMode reporting_mode = ChainDiagnosticReportingMode::standard;
+    ChainDiagnosticPolicyMode policy_mode = ChainDiagnosticPolicyMode::compatibility;
+    std::uint32_t activation_tier = 0;
+    std::uint32_t capture_frame_limit = 1;
+    std::uint64_t retention_bytes = 256ULL * 1024ULL * 1024ULL;
+};
+
+struct ChainDiagnosticsSummary {
+    ChainDiagnosticReportingMode reporting_mode = ChainDiagnosticReportingMode::standard;
+    ChainDiagnosticPolicyMode policy_mode = ChainDiagnosticPolicyMode::compatibility;
+    std::uint32_t error_count = 0;
+    std::uint32_t warning_count = 0;
+    std::uint32_t info_count = 0;
+};
+
+using ChainDiagnosticEventCallback = goggles_chain_diagnostic_event_cb;
+
 class GOGGLES_CHAIN_CPP_API FilterChainRuntime {
 public:
     FilterChainRuntime() = default;
@@ -140,6 +163,13 @@ public:
     [[nodiscard]] auto list_controls() const -> Result<std::vector<ChainControlDescriptor>>;
     [[nodiscard]] auto list_controls(ChainControlStage stage) const
         -> Result<std::vector<ChainControlDescriptor>>;
+    [[nodiscard]] auto create_diagnostics_session(const ChainDiagnosticsCreateInfo& create_info)
+        -> Result<void>;
+    [[nodiscard]] auto destroy_diagnostics_session() -> Result<void>;
+    [[nodiscard]] auto register_diagnostic_sink(ChainDiagnosticEventCallback callback,
+                                                void* user_data) -> Result<std::uint32_t>;
+    [[nodiscard]] auto unregister_diagnostic_sink(std::uint32_t sink_id) -> Result<void>;
+    [[nodiscard]] auto diagnostics_summary() const -> Result<ChainDiagnosticsSummary>;
     [[nodiscard]] auto set_control_value(std::uint64_t control_id, float value) -> Result<bool>;
     [[nodiscard]] auto reset_control_value(std::uint64_t control_id) -> Result<bool>;
     [[nodiscard]] auto reset_all_controls() -> Result<void>;

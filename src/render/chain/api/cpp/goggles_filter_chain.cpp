@@ -107,6 +107,44 @@ auto to_api_stage_mask(const ChainStagePolicy& policy) -> goggles_chain_stage_ma
     return static_cast<goggles_chain_stage_mask_t>(to_underlying(stage_policy_mask(policy)));
 }
 
+auto to_api_reporting_mode(ChainDiagnosticReportingMode mode) -> uint32_t {
+    switch (mode) {
+    case ChainDiagnosticReportingMode::minimal:
+        return GOGGLES_CHAIN_DIAG_MODE_MINIMAL;
+    case ChainDiagnosticReportingMode::investigate:
+        return GOGGLES_CHAIN_DIAG_MODE_INVESTIGATE;
+    case ChainDiagnosticReportingMode::forensic:
+        return GOGGLES_CHAIN_DIAG_MODE_FORENSIC;
+    case ChainDiagnosticReportingMode::standard:
+    default:
+        return GOGGLES_CHAIN_DIAG_MODE_STANDARD;
+    }
+}
+
+auto to_api_policy_mode(ChainDiagnosticPolicyMode mode) -> uint32_t {
+    return mode == ChainDiagnosticPolicyMode::strict ? GOGGLES_CHAIN_DIAG_POLICY_STRICT
+                                                     : GOGGLES_CHAIN_DIAG_POLICY_COMPATIBILITY;
+}
+
+auto to_reporting_mode(uint32_t mode) -> ChainDiagnosticReportingMode {
+    switch (mode) {
+    case GOGGLES_CHAIN_DIAG_MODE_MINIMAL:
+        return ChainDiagnosticReportingMode::minimal;
+    case GOGGLES_CHAIN_DIAG_MODE_INVESTIGATE:
+        return ChainDiagnosticReportingMode::investigate;
+    case GOGGLES_CHAIN_DIAG_MODE_FORENSIC:
+        return ChainDiagnosticReportingMode::forensic;
+    case GOGGLES_CHAIN_DIAG_MODE_STANDARD:
+    default:
+        return ChainDiagnosticReportingMode::standard;
+    }
+}
+
+auto to_policy_mode(uint32_t mode) -> ChainDiagnosticPolicyMode {
+    return mode == GOGGLES_CHAIN_DIAG_POLICY_STRICT ? ChainDiagnosticPolicyMode::strict
+                                                    : ChainDiagnosticPolicyMode::compatibility;
+}
+
 auto snapshot_to_controls(const goggles_chain_control_snapshot_t* snapshot)
     -> std::vector<ChainControlDescriptor> {
     std::vector<ChainControlDescriptor> controls;
@@ -355,6 +393,79 @@ auto FilterChainRuntime::list_controls(ChainControlStage stage) const
     }
 
     return controls;
+}
+
+auto FilterChainRuntime::create_diagnostics_session(const ChainDiagnosticsCreateInfo& create_info)
+    -> Result<void> {
+    if (m_handle == nullptr) {
+        return make_error<void>(ErrorCode::vulkan_init_failed, "Filter chain not initialized");
+    }
+
+    auto info = goggles_chain_diagnostics_create_info_init();
+    info.reporting_mode = to_api_reporting_mode(create_info.reporting_mode);
+    info.policy_mode = to_api_policy_mode(create_info.policy_mode);
+    info.activation_tier = create_info.activation_tier;
+    info.capture_frame_limit = create_info.capture_frame_limit;
+    info.retention_bytes = create_info.retention_bytes;
+    return status_to_result(m_handle, goggles_chain_diagnostics_session_create(m_handle, &info),
+                            "Failed to create diagnostics session");
+}
+
+auto FilterChainRuntime::destroy_diagnostics_session() -> Result<void> {
+    if (m_handle == nullptr) {
+        return make_error<void>(ErrorCode::vulkan_init_failed, "Filter chain not initialized");
+    }
+
+    return status_to_result(m_handle, goggles_chain_diagnostics_session_destroy(m_handle),
+                            "Failed to destroy diagnostics session");
+}
+
+auto FilterChainRuntime::register_diagnostic_sink(ChainDiagnosticEventCallback callback,
+                                                  void* user_data) -> Result<std::uint32_t> {
+    if (m_handle == nullptr) {
+        return make_error<std::uint32_t>(ErrorCode::vulkan_init_failed,
+                                         "Filter chain not initialized");
+    }
+
+    std::uint32_t sink_id = 0;
+    const auto status =
+        goggles_chain_diagnostics_sink_register(m_handle, callback, user_data, &sink_id);
+    if (status != GOGGLES_CHAIN_STATUS_OK) {
+        return nonstd::make_unexpected(
+            make_chain_error(m_handle, status, "Failed to register diagnostic sink"));
+    }
+    return sink_id;
+}
+
+auto FilterChainRuntime::unregister_diagnostic_sink(std::uint32_t sink_id) -> Result<void> {
+    if (m_handle == nullptr) {
+        return make_error<void>(ErrorCode::vulkan_init_failed, "Filter chain not initialized");
+    }
+
+    return status_to_result(m_handle, goggles_chain_diagnostics_sink_unregister(m_handle, sink_id),
+                            "Failed to unregister diagnostic sink");
+}
+
+auto FilterChainRuntime::diagnostics_summary() const -> Result<ChainDiagnosticsSummary> {
+    if (m_handle == nullptr) {
+        return make_error<ChainDiagnosticsSummary>(ErrorCode::vulkan_init_failed,
+                                                   "Filter chain not initialized");
+    }
+
+    auto summary = goggles_chain_diagnostics_summary_init();
+    const auto status = goggles_chain_diagnostics_summary_get(m_handle, &summary);
+    if (status != GOGGLES_CHAIN_STATUS_OK) {
+        return nonstd::make_unexpected(
+            make_chain_error(m_handle, status, "Failed to read diagnostics summary"));
+    }
+
+    return ChainDiagnosticsSummary{
+        .reporting_mode = to_reporting_mode(summary.reporting_mode),
+        .policy_mode = to_policy_mode(summary.policy_mode),
+        .error_count = summary.error_count,
+        .warning_count = summary.warning_count,
+        .info_count = summary.info_count,
+    };
 }
 
 auto FilterChainRuntime::set_control_value(std::uint64_t control_id, float value) -> Result<bool> {

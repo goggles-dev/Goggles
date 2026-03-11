@@ -69,7 +69,8 @@ This change depends on `2026-02-26-drop-wsi-proxy-simplify-capture` being comple
     fence wait before sampling imported image; add direct `wl_buffer` import path
   - `src/app/application.hpp/cpp` — remove `CaptureReceiver`, `handle_sync_semaphores()`,
     `SessionCaptureMode::direct_vulkan`, `m_initial_resolution_sent` resolution relay
-  - `config/goggles.toml` — remove `capture.backend` config key (compositor is unconditional)
+  - `config/goggles.template.toml` and runtime config bootstrap/loading docs — remove `capture.backend`
+    config key references (runtime config resolves to `${XDG_CONFIG_HOME:-$HOME/.config}/goggles/goggles.toml`)
 - **NEW DEPENDENCY:** `wp_linux_drm_syncobj_v1` Wayland protocol (part of wayland-protocols
   ≥ 1.32; already available in the pixi environment)
 - **BREAKING:** `GOGGLES_CAPTURE=1` layer no longer exists; games do not require any special

@@ -90,7 +90,10 @@ TEST_CASE("FilterChain stage ordering parity", "[filter_chain][pipeline]") {
     const auto prechain_pos = source_text->find("record_prechain(resources, cmd");
     const auto effect_pos =
         source_text->find("for (size_t i = 0; i < resources.m_passes.size(); ++i)", prechain_pos);
-    const auto postchain_pos = source_text->find("record_postchain(resources, cmd", effect_pos);
+    auto postchain_pos = source_text->find("record_final_composition(resources, cmd", effect_pos);
+    if (postchain_pos == std::string::npos) {
+        postchain_pos = source_text->find("record_postchain(resources, cmd", effect_pos);
+    }
 
     REQUIRE(prechain_pos != std::string::npos);
     REQUIRE(effect_pos != std::string::npos);

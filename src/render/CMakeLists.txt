@@ -20,6 +20,7 @@ add_library(goggles-filter-chain ${GOGGLES_CHAIN_LIBRARY_TYPE_NORMALIZED}
     $<TARGET_OBJECTS:goggles_render_chain_obj>
     $<TARGET_OBJECTS:goggles_render_shader_obj>
     $<TARGET_OBJECTS:goggles_render_texture_obj>
+    $<TARGET_OBJECTS:goggles_diagnostics>
 )
 
 if(GOGGLES_CHAIN_LIBRARY_TYPE_NORMALIZED STREQUAL "SHARED")

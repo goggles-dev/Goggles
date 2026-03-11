@@ -1,6 +1,7 @@
 #include "retroarch_preprocessor.hpp"
 
 #include <fstream>
+#include <optional>
 #include <regex>
 #include <sstream>
 #include <util/logging.hpp>
@@ -12,6 +13,18 @@ namespace {
 
 constexpr std::string_view PRAGMA_STAGE_VERTEX = "#pragma stage vertex";
 constexpr std::string_view PRAGMA_STAGE_FRAGMENT = "#pragma stage fragment";
+
+struct FilterResult {
+    std::string source;
+    diagnostics::SourceProvenanceMap provenance;
+};
+
+struct StageSplitResult {
+    std::string vertex_source;
+    std::string fragment_source;
+    diagnostics::SourceProvenanceMap vertex_provenance;
+    diagnostics::SourceProvenanceMap fragment_provenance;
+};
 
 auto read_file(const std::filesystem::path& path) -> Result<std::string> {
     std::ifstream file(path);
@@ -105,9 +118,172 @@ auto fix_slang_compat(const std::string& source) -> std::string {
     return result;
 }
 
+auto apply_compat_rewrites(std::string resolved, diagnostics::SourceProvenanceMap* provenance)
+    -> std::string {
+    std::string before_compat = resolved;
+    resolved = fix_slang_compat(resolved);
+
+    if (provenance != nullptr && resolved != before_compat) {
+        uint32_t line_num = 0;
+        std::istringstream old_stream(before_compat);
+        std::istringstream new_stream(resolved);
+        std::string old_line;
+        std::string new_line;
+        while (std::getline(old_stream, old_line) && std::getline(new_stream, new_line)) {
+            ++line_num;
+            if (old_line != new_line) {
+                auto* existing = provenance->lookup(line_num);
+                if (existing != nullptr) {
+                    diagnostics::ProvenanceEntry updated = *existing;
+                    updated.rewrite_applied = true;
+                    updated.rewrite_description = "Slang compatibility fix";
+                    provenance->record(line_num, std::move(updated));
+                } else {
+                    provenance->record(line_num,
+                                       {.original_file = {},
+                                        .original_line = 0,
+                                        .rewrite_applied = true,
+                                        .rewrite_description = "Slang compatibility fix"});
+                }
+            }
+        }
+    }
+
+    return resolved;
+}
+
+template <typename Predicate>
+auto filter_lines_with_provenance(const std::string& source,
+                                  const diagnostics::SourceProvenanceMap* provenance,
+                                  Predicate&& keep_line) -> FilterResult {
+    FilterResult result;
+    std::istringstream stream(source);
+    std::string line;
+    uint32_t input_line = 0;
+    uint32_t output_line = 0;
+
+    while (std::getline(stream, line)) {
+        ++input_line;
+        if (!keep_line(line)) {
+            continue;
+        }
+
+        ++output_line;
+        result.source += line;
+        result.source += "\n";
+
+        if (provenance != nullptr) {
+            if (const auto* entry = provenance->lookup(input_line); entry != nullptr) {
+                result.provenance.record(output_line, *entry);
+            }
+        }
+    }
+
+    return result;
+}
+
+auto split_by_stage_with_provenance(const std::string& source,
+                                    const diagnostics::SourceProvenanceMap* provenance)
+    -> StageSplitResult {
+    enum class Stage : std::uint8_t { shared, vertex, fragment };
+
+    StageSplitResult result;
+    Stage current_stage = Stage::shared;
+    bool saw_vertex_stage = false;
+    bool saw_fragment_stage = false;
+    uint32_t vertex_line = 0;
+    uint32_t fragment_line = 0;
+
+    auto append_line = [](std::string* target_source,
+                          diagnostics::SourceProvenanceMap* target_provenance,
+                          uint32_t* target_line, const std::string& line,
+                          const std::optional<diagnostics::ProvenanceEntry>& entry) {
+        ++(*target_line);
+        *target_source += line;
+        *target_source += "\n";
+        if (entry.has_value()) {
+            target_provenance->record(*target_line, *entry);
+        }
+    };
+
+    std::vector<std::string> shared_lines;
+    std::vector<std::optional<diagnostics::ProvenanceEntry>> shared_entries;
+
+    std::istringstream stream(source);
+    std::string line;
+    uint32_t input_line = 0;
+    while (std::getline(stream, line)) {
+        ++input_line;
+        const std::string trimmed = trim(line);
+        const std::optional<diagnostics::ProvenanceEntry> entry =
+            provenance != nullptr && provenance->lookup(input_line) != nullptr
+                ? std::optional<diagnostics::ProvenanceEntry>{*provenance->lookup(input_line)}
+                : std::nullopt;
+
+        if (trimmed.starts_with(PRAGMA_STAGE_VERTEX)) {
+            if (!saw_vertex_stage) {
+                for (size_t index = 0; index < shared_lines.size(); ++index) {
+                    append_line(&result.vertex_source, &result.vertex_provenance, &vertex_line,
+                                shared_lines[index], shared_entries[index]);
+                }
+            }
+            saw_vertex_stage = true;
+            current_stage = Stage::vertex;
+            continue;
+        }
+
+        if (trimmed.starts_with(PRAGMA_STAGE_FRAGMENT)) {
+            if (!saw_fragment_stage) {
+                for (size_t index = 0; index < shared_lines.size(); ++index) {
+                    append_line(&result.fragment_source, &result.fragment_provenance,
+                                &fragment_line, shared_lines[index], shared_entries[index]);
+                }
+            }
+            saw_fragment_stage = true;
+            current_stage = Stage::fragment;
+            continue;
+        }
+
+        if (current_stage == Stage::shared) {
+            shared_lines.push_back(line);
+            shared_entries.push_back(entry);
+            continue;
+        }
+
+        if (current_stage == Stage::vertex) {
+            append_line(&result.vertex_source, &result.vertex_provenance, &vertex_line, line,
+                        entry);
+        } else {
+            append_line(&result.fragment_source, &result.fragment_provenance, &fragment_line, line,
+                        entry);
+        }
+    }
+
+    if (!saw_vertex_stage && !saw_fragment_stage) {
+        result.vertex_source = source;
+        result.fragment_source = source;
+        if (provenance != nullptr) {
+            result.vertex_provenance = *provenance;
+            result.fragment_provenance = *provenance;
+        }
+    } else {
+        if (!saw_vertex_stage) {
+            result.vertex_source = result.fragment_source;
+            result.vertex_provenance = result.fragment_provenance;
+        }
+        if (!saw_fragment_stage) {
+            result.fragment_source = result.vertex_source;
+            result.fragment_provenance = result.vertex_provenance;
+        }
+    }
+
+    return result;
+}
+
 } // namespace
 
-auto RetroArchPreprocessor::preprocess(const std::filesystem::path& shader_path)
+auto RetroArchPreprocessor::preprocess(const std::filesystem::path& shader_path,
+                                       diagnostics::SourceProvenanceMap* provenance)
     -> Result<PreprocessedShader> {
     GOGGLES_PROFILE_FUNCTION();
     auto source_result = read_file(shader_path);
@@ -116,44 +292,141 @@ auto RetroArchPreprocessor::preprocess(const std::filesystem::path& shader_path)
                                               source_result.error().message);
     }
 
-    return preprocess_source(source_result.value(), shader_path.parent_path());
-}
-
-auto RetroArchPreprocessor::preprocess_source(const std::string& source,
-                                              const std::filesystem::path& base_path)
-    -> Result<PreprocessedShader> {
-    GOGGLES_PROFILE_FUNCTION();
-    // Step 1: Resolve includes
-    auto resolved_result = resolve_includes(source, base_path);
+    auto resolved_result =
+        resolve_includes(source_result.value(), shader_path.parent_path(), shader_path, provenance);
     if (!resolved_result) {
         return make_error<PreprocessedShader>(resolved_result.error().code,
                                               resolved_result.error().message);
     }
-    std::string resolved = std::move(resolved_result.value());
 
-    // Step 1.5: Fix Slang incompatibilities (vec *= mat -> vec = vec * mat)
-    resolved = fix_slang_compat(resolved);
+    std::string resolved = apply_compat_rewrites(std::move(resolved_result.value()), provenance);
 
-    // Step 2: Extract parameters (removes pragma lines from source)
-    auto [after_params, parameters] = extract_parameters(resolved);
+    std::vector<ShaderParameter> parameters;
+    static const std::regex PARAM_REGEX(
+        R"regex(^\s*#pragma\s+parameter\s+(\w+)\s+"([^"]+)"\s+([\d.+-]+)\s+([\d.+-]+)\s+([\d.+-]+)\s+([\d.+-]+))regex");
+    const auto parameter_filter =
+        filter_lines_with_provenance(resolved, provenance, [&](const std::string& line) {
+            std::smatch match;
+            if (std::regex_search(line, match, PARAM_REGEX)) {
+                ShaderParameter param;
+                param.name = match[1].str();
+                param.description = match[2].str();
+                param.default_value = std::stof(match[3].str());
+                param.current_value = param.default_value;
+                param.min_value = std::stof(match[4].str());
+                param.max_value = std::stof(match[5].str());
+                param.step = std::stof(match[6].str());
+                parameters.push_back(std::move(param));
+                return false;
+            }
+            return true;
+        });
 
-    // Step 3: Extract metadata (removes pragma lines from source)
-    auto [after_metadata, metadata] = extract_metadata(after_params);
+    ShaderMetadata metadata;
+    static const std::regex NAME_REGEX(R"(^\s*#pragma\s+name\s+(\S+))");
+    static const std::regex FORMAT_REGEX(R"(^\s*#pragma\s+format\s+(\S+))");
+    const auto metadata_filter = filter_lines_with_provenance(
+        parameter_filter.source, &parameter_filter.provenance, [&](const std::string& line) {
+            std::smatch match;
+            if (std::regex_search(line, match, NAME_REGEX)) {
+                metadata.name_alias = match[1].str();
+                return false;
+            }
+            if (std::regex_search(line, match, FORMAT_REGEX)) {
+                metadata.format = match[1].str();
+                return false;
+            }
+            return true;
+        });
+    auto stage_split =
+        split_by_stage_with_provenance(metadata_filter.source, &metadata_filter.provenance);
 
-    // Step 4: Split by stage
-    auto [vertex, fragment] = split_by_stage(after_metadata);
+    if (provenance != nullptr) {
+        *provenance = metadata_filter.provenance;
+    }
 
     return PreprocessedShader{
-        .vertex_source = std::move(vertex),
-        .fragment_source = std::move(fragment),
+        .vertex_source = std::move(stage_split.vertex_source),
+        .fragment_source = std::move(stage_split.fragment_source),
+        .vertex_provenance = std::move(stage_split.vertex_provenance),
+        .fragment_provenance = std::move(stage_split.fragment_provenance),
         .parameters = std::move(parameters),
         .metadata = std::move(metadata),
     };
 }
 
-auto RetroArchPreprocessor::resolve_includes(const std::string& source,
-                                             const std::filesystem::path& base_path, int depth)
-    -> Result<std::string> {
+auto RetroArchPreprocessor::preprocess_source(const std::string& source,
+                                              const std::filesystem::path& base_path,
+                                              diagnostics::SourceProvenanceMap* provenance)
+    -> Result<PreprocessedShader> {
+    GOGGLES_PROFILE_FUNCTION();
+    // Step 1: Resolve includes
+    auto resolved_result = resolve_includes(source, base_path, {}, provenance);
+    if (!resolved_result) {
+        return make_error<PreprocessedShader>(resolved_result.error().code,
+                                              resolved_result.error().message);
+    }
+    std::string resolved = apply_compat_rewrites(std::move(resolved_result.value()), provenance);
+
+    std::vector<ShaderParameter> parameters;
+    static const std::regex PARAM_REGEX(
+        R"regex(^\s*#pragma\s+parameter\s+(\w+)\s+"([^"]+)"\s+([\d.+-]+)\s+([\d.+-]+)\s+([\d.+-]+)\s+([\d.+-]+))regex");
+    const auto parameter_filter =
+        filter_lines_with_provenance(resolved, provenance, [&](const std::string& line) {
+            std::smatch match;
+            if (std::regex_search(line, match, PARAM_REGEX)) {
+                ShaderParameter param;
+                param.name = match[1].str();
+                param.description = match[2].str();
+                param.default_value = std::stof(match[3].str());
+                param.current_value = param.default_value;
+                param.min_value = std::stof(match[4].str());
+                param.max_value = std::stof(match[5].str());
+                param.step = std::stof(match[6].str());
+                parameters.push_back(std::move(param));
+                return false;
+            }
+            return true;
+        });
+
+    ShaderMetadata metadata;
+    static const std::regex NAME_REGEX(R"(^\s*#pragma\s+name\s+(\S+))");
+    static const std::regex FORMAT_REGEX(R"(^\s*#pragma\s+format\s+(\S+))");
+    const auto metadata_filter = filter_lines_with_provenance(
+        parameter_filter.source, &parameter_filter.provenance, [&](const std::string& line) {
+            std::smatch match;
+            if (std::regex_search(line, match, NAME_REGEX)) {
+                metadata.name_alias = match[1].str();
+                return false;
+            }
+            if (std::regex_search(line, match, FORMAT_REGEX)) {
+                metadata.format = match[1].str();
+                return false;
+            }
+            return true;
+        });
+    auto stage_split =
+        split_by_stage_with_provenance(metadata_filter.source, &metadata_filter.provenance);
+
+    if (provenance != nullptr) {
+        *provenance = metadata_filter.provenance;
+    }
+
+    return PreprocessedShader{
+        .vertex_source = std::move(stage_split.vertex_source),
+        .fragment_source = std::move(stage_split.fragment_source),
+        .vertex_provenance = std::move(stage_split.vertex_provenance),
+        .fragment_provenance = std::move(stage_split.fragment_provenance),
+        .parameters = std::move(parameters),
+        .metadata = std::move(metadata),
+    };
+}
+
+auto RetroArchPreprocessor::resolve_includes(
+    const std::string& source,
+    const std::filesystem::path& base_path, // NOLINT(bugprone-easily-swappable-parameters)
+    const std::filesystem::path& current_file, diagnostics::SourceProvenanceMap* provenance,
+    int depth) -> Result<std::string> {
     GOGGLES_PROFILE_FUNCTION();
     if (depth > MAX_INCLUDE_DEPTH) {
         return make_error<std::string>(ErrorCode::parse_error,
@@ -165,8 +438,10 @@ auto RetroArchPreprocessor::resolve_includes(const std::string& source,
     std::string result;
     std::istringstream stream(source);
     std::string line;
+    uint32_t source_line = 0;
 
     while (std::getline(stream, line)) {
+        ++source_line;
         std::smatch match;
         if (std::regex_search(line, match, include_regex)) {
             std::string include_path_str = match[1].str();
@@ -180,15 +455,42 @@ auto RetroArchPreprocessor::resolve_includes(const std::string& source,
             }
 
             // Recursively resolve includes in the included file
-            auto resolved =
-                resolve_includes(include_source.value(), include_path.parent_path(), depth + 1);
+            auto resolved = resolve_includes(include_source.value(), include_path.parent_path(),
+                                             include_path, provenance, depth + 1);
             if (!resolved) {
                 return resolved;
+            }
+
+            // Record provenance for lines from the included file
+            if (provenance != nullptr) {
+                uint32_t expanded_line_start =
+                    static_cast<uint32_t>(std::count(result.begin(), result.end(), '\n')) + 1;
+                std::istringstream inc_stream(resolved.value());
+                std::string inc_line;
+                uint32_t inc_line_num = 0;
+                while (std::getline(inc_stream, inc_line)) {
+                    ++inc_line_num;
+                    provenance->record(expanded_line_start + inc_line_num - 1,
+                                       {.original_file = include_path.string(),
+                                        .original_line = inc_line_num,
+                                        .rewrite_applied = false,
+                                        .rewrite_description = {}});
+                }
             }
 
             result += resolved.value();
             result += "\n";
         } else {
+            // Record provenance for lines from the current file
+            if (provenance != nullptr && !current_file.empty()) {
+                uint32_t expanded_line =
+                    static_cast<uint32_t>(std::count(result.begin(), result.end(), '\n')) + 1;
+                provenance->record(expanded_line, {.original_file = current_file.string(),
+                                                   .original_line = source_line,
+                                                   .rewrite_applied = false,
+                                                   .rewrite_description = {}});
+            }
+
             result += line;
             result += "\n";
         }

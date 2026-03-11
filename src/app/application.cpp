@@ -101,6 +101,9 @@ auto Application::init_vulkan_backend(const Config& config, const util::AppDirs&
         .gpu_selector = config.render.gpu_selector,
         .source_width = config.render.source_width,
         .source_height = config.render.source_height,
+        .diagnostics = config.diagnostics.configured
+                           ? std::optional<Config::Diagnostics>{config.diagnostics}
+                           : std::nullopt,
     };
 
     GOGGLES_LOG_INFO("Scale mode: {}", to_string(config.render.scale_mode));
@@ -240,6 +243,9 @@ auto Application::create_headless(const Config& config, const util::AppDirs& app
         .gpu_selector = config.render.gpu_selector,
         .source_width = config.render.source_width,
         .source_height = config.render.source_height,
+        .diagnostics = config.diagnostics.configured
+                           ? std::optional<Config::Diagnostics>{config.diagnostics}
+                           : std::nullopt,
     };
 
     app->m_vulkan_backend = GOGGLES_MUST(render::VulkanBackend::create_headless(

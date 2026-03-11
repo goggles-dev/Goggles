@@ -65,7 +65,9 @@
 
 - [x] 7.1 Remove `capture.backend` field from `util::Config` / `config.hpp`
 - [x] 7.2 Remove parsing in `util::load_config()`
-- [x] 7.3 Remove `capture.backend` from `config/goggles.toml` and any CLI arg mapping
+- [x] 7.3 Remove `capture.backend` from `config/goggles.template.toml`, runtime config
+      bootstrap/loading references for `${XDG_CONFIG_HOME:-$HOME/.config}/goggles/goggles.toml`,
+      and any CLI arg mapping
 
 ## 8. Build and Quality Gates
 

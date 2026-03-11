@@ -1,0 +1,3 @@
+shaders = 1
+shader0 = pass_through.slang
+filter_linear0 = false

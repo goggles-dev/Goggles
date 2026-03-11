@@ -79,4 +79,5 @@ This ensures shaders using `scale_type = viewport` render at the correct resolut
   - `src/util/config.cpp` - parse new config options
   - `src/render/chain/filter_chain.*` - calculate FinalViewportSize based on scale mode
   - `src/render/chain/output_pass.cpp` - implement viewport/scissor positioning
-  - `config/goggles.toml` - add new settings with documentation
+  - `config/goggles.template.toml` - add new settings with documentation; first-run bootstrap may
+    materialize them into `${XDG_CONFIG_HOME:-$HOME/.config}/goggles/goggles.toml`

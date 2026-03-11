@@ -3,6 +3,7 @@
 #include "slang_reflect.hpp"
 
 #include <array>
+#include <chrono>
 #include <cstring>
 #include <fstream>
 #include <functional>
@@ -641,7 +642,8 @@ auto ShaderRuntime::compile_glsl_with_reflection(const std::string& module_name,
 
 auto ShaderRuntime::compile_retroarch_shader(const std::string& vertex_source,
                                              const std::string& fragment_source,
-                                             const std::string& module_name)
+                                             const std::string& module_name,
+                                             diagnostics::CompileReport* report)
     -> Result<RetroArchCompiledShader> {
     GOGGLES_PROFILE_FUNCTION();
 
@@ -654,24 +656,74 @@ auto ShaderRuntime::compile_retroarch_shader(const std::string& vertex_source,
         auto cached = load_cached_retroarch(cache_path, source_hash);
         if (cached) {
             GOGGLES_LOG_DEBUG("Loaded cached RetroArch shader: {}", cache_path.filename().string());
+            if (report != nullptr) {
+                report->add_stage({.stage = diagnostics::CompileStage::vertex,
+                                   .success = true,
+                                   .messages = {},
+                                   .timing_us = 0.0,
+                                   .cache_hit = true});
+                report->add_stage({.stage = diagnostics::CompileStage::fragment,
+                                   .success = true,
+                                   .messages = {},
+                                   .timing_us = 0.0,
+                                   .cache_hit = true});
+            }
             return std::move(cached.value());
         }
     }
 
+    auto vert_start = std::chrono::steady_clock::now();
     auto vertex_result = compile_glsl_with_reflection(module_name + "_vert", vertex_source, "main",
                                                       ShaderStage::vertex);
+    auto vert_end = std::chrono::steady_clock::now();
+    double vert_us = std::chrono::duration<double, std::micro>(vert_end - vert_start).count();
+
     if (!vertex_result) {
+        if (report != nullptr) {
+            report->add_stage({.stage = diagnostics::CompileStage::vertex,
+                               .success = false,
+                               .messages = {vertex_result.error().message},
+                               .timing_us = vert_us,
+                               .cache_hit = false});
+        }
         return make_error<RetroArchCompiledShader>(ErrorCode::shader_compile_failed,
                                                    "Vertex shader compile failed: " +
                                                        vertex_result.error().message);
     }
 
+    if (report != nullptr) {
+        report->add_stage({.stage = diagnostics::CompileStage::vertex,
+                           .success = true,
+                           .messages = {},
+                           .timing_us = vert_us,
+                           .cache_hit = false});
+    }
+
+    auto frag_start = std::chrono::steady_clock::now();
     auto fragment_result = compile_glsl_with_reflection(module_name + "_frag", fragment_source,
                                                         "main", ShaderStage::fragment);
+    auto frag_end = std::chrono::steady_clock::now();
+    double frag_us = std::chrono::duration<double, std::micro>(frag_end - frag_start).count();
+
     if (!fragment_result) {
+        if (report != nullptr) {
+            report->add_stage({.stage = diagnostics::CompileStage::fragment,
+                               .success = false,
+                               .messages = {fragment_result.error().message},
+                               .timing_us = frag_us,
+                               .cache_hit = false});
+        }
         return make_error<RetroArchCompiledShader>(ErrorCode::shader_compile_failed,
                                                    "Fragment shader compile failed: " +
                                                        fragment_result.error().message);
+    }
+
+    if (report != nullptr) {
+        report->add_stage({.stage = diagnostics::CompileStage::fragment,
+                           .success = true,
+                           .messages = {},
+                           .timing_us = frag_us,
+                           .cache_hit = false});
     }
 
     RetroArchCompiledShader result{.vertex_spirv = std::move(vertex_result->spirv),

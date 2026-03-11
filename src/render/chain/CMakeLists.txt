@@ -31,6 +31,7 @@ target_compile_definitions(goggles_render_chain_obj PRIVATE
 
 target_link_libraries(goggles_render_chain_obj PUBLIC
     goggles_util
+    goggles_diagnostics
     Vulkan::Vulkan
     slang::slang
     stb_image

@@ -11,6 +11,7 @@ CONFIGS_DIR="${PROJECT_ROOT}/tests/visual/configs"
 
 GOGGLES_BIN="${BUILD_DIR}/bin/goggles"
 QUADRANT_CLIENT_BIN="${BUILD_DIR}/tests/clients/quadrant_client"
+VISUAL_CAPTURE_BIN="${BUILD_DIR}/tests/visual/goggles_visual_capture"
 
 echo "==> Updating golden reference images (preset: ${PRESET})"
 echo "    Build dir:    ${BUILD_DIR}"
@@ -28,7 +29,15 @@ if [[ ! -x "${QUADRANT_CLIENT_BIN}" ]]; then
     exit 1
 fi
 
+if [[ ! -x "${VISUAL_CAPTURE_BIN}" ]]; then
+    echo "ERROR: visual capture helper not found at ${VISUAL_CAPTURE_BIN}"
+    echo "       Run 'pixi run build' (or 'pixi run build -p ${PRESET}') first."
+    exit 1
+fi
+
 mkdir -p "${GOLDEN_DIR}"
+
+export ASAN_OPTIONS="detect_leaks=0"
 
 echo ""
 echo "--> Capturing shader_bypass_quadrant.png ..."
@@ -49,6 +58,34 @@ echo "--> Capturing shader_zfast_quadrant.png ..."
     --config "${CONFIGS_DIR}/shader_zfast.toml" \
     -- "${QUADRANT_CLIENT_BIN}"
 echo "    Done: ${GOLDEN_DIR}/shader_zfast_quadrant.png"
+
+echo ""
+echo "--> Capturing runtime_format intermediate goldens ..."
+"${VISUAL_CAPTURE_BIN}" \
+    --preset-path "${PROJECT_ROOT}/shaders/retroarch/test/format.slangp" \
+    --preset-name runtime_format \
+    --output-dir "${GOLDEN_DIR}" \
+    --frames 0 \
+    --passes 0,1
+rm -f \
+    "${GOLDEN_DIR}/runtime_format_frame0.png" \
+    "${GOLDEN_DIR}/runtime_format_pass0_frame0.png" \
+    "${GOLDEN_DIR}/runtime_format_pass1_frame0.png"
+echo "    Done: ${GOLDEN_DIR}/runtime_format_pass0.png"
+echo "    Done: ${GOLDEN_DIR}/runtime_format_pass1.png"
+
+echo ""
+echo "--> Capturing runtime_history temporal goldens ..."
+"${VISUAL_CAPTURE_BIN}" \
+    --preset-path "${PROJECT_ROOT}/shaders/retroarch/test/history.slangp" \
+    --preset-name runtime_history \
+    --output-dir "${GOLDEN_DIR}" \
+    --frames 1,3 \
+    --passes 0
+echo "    Done: ${GOLDEN_DIR}/runtime_history_frame1.png"
+echo "    Done: ${GOLDEN_DIR}/runtime_history_frame3.png"
+echo "    Done: ${GOLDEN_DIR}/runtime_history_pass0_frame1.png"
+echo "    Done: ${GOLDEN_DIR}/runtime_history_pass0_frame3.png"
 
 echo ""
 echo "==> Golden images updated successfully."

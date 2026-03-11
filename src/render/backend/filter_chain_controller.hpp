@@ -9,6 +9,7 @@
 #include <future>
 #include <render/chain/filter_controls.hpp>
 #include <render/chain/vulkan_context.hpp>
+#include <util/config.hpp>
 #include <util/error.hpp>
 #include <vector>
 #include <vulkan/vulkan.hpp>
@@ -45,6 +46,7 @@ struct FilterChainController {
         std::filesystem::path shader_dir;
         std::filesystem::path cache_dir;
         vk::Extent2D initial_prechain_resolution;
+        std::optional<Config::Diagnostics> diagnostics_config;
     };
 
     struct PrechainResolutionConfig {

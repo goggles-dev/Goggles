@@ -19,7 +19,7 @@ The Goggles application SHALL embed the latest Dear ImGui docking branch UI insi
 The Goggles application SHALL expose a dockable "Shader Controls" panel that shows the active shader preset, enumerates available presets, and emits runtime preset or passthrough selection events.
 
 #### Scenario: Preset selection list
-- **GIVEN** `config/goggles.toml` contains a `[shader] preset` value and the `shaders/` tree contains `.slangp` files
+- **GIVEN** the runtime user config at `${XDG_CONFIG_HOME:-$HOME/.config}/goggles/goggles.toml` (bootstrapped from `config/goggles.template.toml` on first run when needed) contains a `[shader] preset` value and the `shaders/` tree contains `.slangp` files
 - **WHEN** the Shader Controls panel is opened
 - **THEN** it SHALL display the active preset path
 - **AND** it SHALL list discoverable preset entries sourced from the config value and presets found under `shaders/`

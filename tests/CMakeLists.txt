@@ -41,6 +41,20 @@ target_sources(goggles_tests PRIVATE
     render/test_vulkan_backend_subsystem_contracts.cpp
     render/test_shader_validation.cpp
 
+    # Diagnostics module tests
+    render/test_diagnostic_event_model.cpp
+    render/test_diagnostic_sinks.cpp
+    render/test_binding_ledger.cpp
+    render/test_diagnostic_ledgers.cpp
+    render/test_diagnostic_session.cpp
+    render/test_diagnostic_reporting.cpp
+    render/test_source_provenance.cpp
+    render/test_compile_report.cpp
+    render/test_authoring_validation.cpp
+    render/test_runtime_diagnostics.cpp
+    render/test_shader_batch_report.cpp
+    render/shader_batch_report.cpp
+
     # Future: Pipeline module tests (when implemented)
     # pipeline/graph/test_pipeline_graph.cpp
 )
@@ -75,10 +89,31 @@ file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/util/test_data/
 # Register test with CTest
 add_test(NAME goggles_unit_tests COMMAND goggles_tests)
 
+add_executable(goggles_shader_batch_report render/shader_batch_report_main.cpp render/shader_batch_report.cpp)
+target_include_directories(goggles_shader_batch_report PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/render
+)
+target_link_libraries(goggles_shader_batch_report PRIVATE
+    goggles_render
+    goggles_util
+)
+target_compile_features(goggles_shader_batch_report PRIVATE cxx_std_20)
+target_compile_definitions(goggles_shader_batch_report PRIVATE
+    GOGGLES_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+goggles_enable_sanitizers(goggles_shader_batch_report)
+
 # Set working directory for test execution to ensure test data files are found
 # This allows both CTest execution and individual test executable debugging
 set_property(TEST goggles_unit_tests 
     PROPERTY WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
+# Some Vulkan-backed Catch2 cases exercise loader/driver paths that trigger external
+# LeakSanitizer noise under the ASAN preset. Match the existing GPU/integration test
+# convention so these tests can still provide executable evidence in ASAN lanes.
+set_property(TEST goggles_unit_tests
+    PROPERTY ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0")
 
 # Discover Catch2 tests for individual reporting (optional, fallback to simple registration)
 # Note: catch_discover_tests may not be available in all Catch2 versions

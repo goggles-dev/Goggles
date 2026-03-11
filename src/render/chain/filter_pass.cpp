@@ -40,7 +40,8 @@ FilterPass::~FilterPass() {
 }
 
 auto FilterPass::create(const VulkanContext& vk_ctx, ShaderRuntime& shader_runtime,
-                        const FilterPassConfig& config) -> ResultPtr<FilterPass> {
+                        const FilterPassConfig& config, diagnostics::CompileReport* compile_report)
+    -> ResultPtr<FilterPass> {
     GOGGLES_PROFILE_FUNCTION();
 
     auto pass = std::unique_ptr<FilterPass>(new FilterPass());
@@ -50,9 +51,10 @@ auto FilterPass::create(const VulkanContext& vk_ctx, ShaderRuntime& shader_runti
     pass->m_target_format = config.target_format;
     pass->m_num_sync_indices = config.num_sync_indices;
     pass->m_parameters = config.parameters;
+    pass->m_shader_name = config.shader_name;
 
     auto compile_result = shader_runtime.compile_retroarch_shader(
-        config.vertex_source, config.fragment_source, config.shader_name);
+        config.vertex_source, config.fragment_source, config.shader_name, compile_report);
     if (!compile_result) {
         return make_result_ptr_error<FilterPass>(ErrorCode::shader_compile_failed,
                                                  compile_result.error().message);

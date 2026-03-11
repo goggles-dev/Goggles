@@ -10,6 +10,31 @@ namespace goggles::render::backend_internal {
 
 namespace {
 
+auto to_reporting_mode(std::string_view mode) -> ChainDiagnosticReportingMode {
+    if (mode == "minimal") {
+        return ChainDiagnosticReportingMode::minimal;
+    }
+    if (mode == "investigate") {
+        return ChainDiagnosticReportingMode::investigate;
+    }
+    if (mode == "forensic") {
+        return ChainDiagnosticReportingMode::forensic;
+    }
+    return ChainDiagnosticReportingMode::standard;
+}
+
+auto create_diagnostics_session(FilterChainRuntime& runtime, const Config::Diagnostics& diagnostics)
+    -> Result<void> {
+    return runtime.create_diagnostics_session(ChainDiagnosticsCreateInfo{
+        .reporting_mode = to_reporting_mode(diagnostics.mode),
+        .policy_mode = diagnostics.strict ? ChainDiagnosticPolicyMode::strict
+                                          : ChainDiagnosticPolicyMode::compatibility,
+        .activation_tier = diagnostics.tier,
+        .capture_frame_limit = diagnostics.capture_frame_limit,
+        .retention_bytes = diagnostics.retention_bytes,
+    });
+}
+
 auto to_chain_stage(FilterControlStage stage) -> ChainControlStage {
     switch (stage) {
     case FilterControlStage::prechain:
@@ -71,6 +96,11 @@ auto create_filter_chain_runtime(const FilterChainController::RuntimeBuildConfig
     });
     if (!filter_chain_result) {
         return nonstd::make_unexpected(filter_chain_result.error());
+    }
+
+    if (config.diagnostics_config.has_value()) {
+        GOGGLES_TRY(
+            create_diagnostics_session(filter_chain_result.value(), *config.diagnostics_config));
     }
 
     return std::move(filter_chain_result.value());
@@ -223,12 +253,10 @@ auto FilterChainController::recreate_filter_chain(const RuntimeBuildConfig& conf
         .effect_stage_enabled = effect_stage_policy_enabled,
     };
 
-    if (!preset_path.empty()) {
-        auto load_result = filter_chain.load_preset(preset_path);
-        if (!load_result) {
-            GOGGLES_LOG_WARN("Failed to reload shader preset after chain rebuild: {}",
-                             load_result.error().message);
-        }
+    auto load_result = filter_chain.load_preset(preset_path);
+    if (!load_result) {
+        GOGGLES_LOG_WARN("Failed to reload shader preset after chain rebuild: {}",
+                         load_result.error().message);
     }
 
     auto restore_result =
@@ -281,11 +309,6 @@ void FilterChainController::load_shader_preset(const std::filesystem::path& new_
 
     preset_path = new_preset_path;
 
-    if (new_preset_path.empty()) {
-        GOGGLES_LOG_DEBUG("No shader preset specified, using passthrough mode");
-        return;
-    }
-
     if (!filter_chain) {
         GOGGLES_LOG_WARN("Filter chain not initialized; preset load skipped");
         return;
@@ -295,6 +318,8 @@ void FilterChainController::load_shader_preset(const std::filesystem::path& new_
     if (!load_result) {
         GOGGLES_LOG_WARN("Failed to load shader preset '{}': {} - falling back to passthrough",
                          new_preset_path.string(), load_result.error().message);
+    } else if (new_preset_path.empty()) {
+        GOGGLES_LOG_DEBUG("No shader preset specified, using passthrough mode");
     }
 
     authoritative_control_overrides = snapshot_runtime_controls(filter_chain);
@@ -338,12 +363,10 @@ auto FilterChainController::reload_shader_preset(std::filesystem::path new_prese
             }
             auto pending_chain = std::move(pending_chain_result.value());
 
-            if (!requested_preset_path.empty()) {
-                auto load_result = pending_chain.load_preset(requested_preset_path);
-                if (!load_result) {
-                    GOGGLES_LOG_ERROR("Failed to load preset '{}'", requested_preset_path.string());
-                    return load_result;
-                }
+            auto load_result = pending_chain.load_preset(requested_preset_path);
+            if (!load_result) {
+                GOGGLES_LOG_ERROR("Failed to load preset '{}'", requested_preset_path.string());
+                return load_result;
             }
 
             GOGGLES_TRY(apply_runtime_state(pending_chain, requested_policy,
