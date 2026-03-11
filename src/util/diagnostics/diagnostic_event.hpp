@@ -2,8 +2,8 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
-#include <string_view>
 #include <util/diagnostics/session_identity.hpp>
 #include <variant>
 #include <vector>
@@ -17,8 +17,8 @@ enum class Category : uint8_t { authoring, runtime, quality, capture };
 struct LocalizationKey {
     static constexpr uint32_t CHAIN_LEVEL = UINT32_MAX;
     uint32_t pass_ordinal = CHAIN_LEVEL;
-    std::string_view stage;
-    std::string_view resource;
+    std::string stage;
+    std::string resource;
 };
 
 struct BindingEvidence {
@@ -76,9 +76,9 @@ struct DiagnosticEvent {
     LocalizationKey localization;
     uint32_t frame_index = 0;
     uint64_t timestamp_ns = 0;
-    const SessionIdentity* session_identity = nullptr;
     std::string message;
     EvidencePayload evidence;
+    std::optional<SessionIdentity> session_identity;
 };
 
 /// @brief Verdict summarizing authoring validation results.

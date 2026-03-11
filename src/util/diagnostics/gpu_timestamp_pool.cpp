@@ -138,6 +138,10 @@ auto GpuTimestampPool::read_results(uint32_t frame_index)
     return durations;
 }
 
+void GpuTimestampPool::disable() {
+    m_available = false;
+}
+
 auto GpuTimestampPool::is_available() const -> bool {
     return m_available;
 }

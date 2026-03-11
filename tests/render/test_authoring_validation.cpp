@@ -22,7 +22,8 @@ TEST_CASE("Authoring verdict pass for clean session", "[diagnostics][authoring]"
                    .frame_index = 0,
                    .timestamp_ns = 0,
                    .message = "Chain manifest generated",
-                   .evidence = {}});
+                   .evidence = {},
+                   .session_identity = std::nullopt});
 
     // Simulate compile report events for 2 passes
     for (uint32_t pass = 0; pass < 2; ++pass) {
@@ -37,7 +38,8 @@ TEST_CASE("Authoring verdict pass for clean session", "[diagnostics][authoring]"
                                                    .success = true,
                                                    .messages = {},
                                                    .timing_us = 100.0,
-                                                   .cache_hit = false}});
+                                                   .cache_hit = false},
+                       .session_identity = std::nullopt});
     }
 
     // Set verdict
@@ -54,7 +56,8 @@ TEST_CASE("Authoring verdict pass for clean session", "[diagnostics][authoring]"
                    .frame_index = 0,
                    .timestamp_ns = 0,
                    .message = "Authoring verdict: pass",
-                   .evidence = {}});
+                   .evidence = {},
+                   .session_identity = std::nullopt});
 
     // Verify events
     auto authoring_events = sink_ptr->events_by_category(Category::authoring);
@@ -90,8 +93,10 @@ TEST_CASE("Authoring verdict degraded for empty reflection in compat mode",
                    .frame_index = 0,
                    .timestamp_ns = 0,
                    .message = "Empty reflection contract (compatibility mode: degraded)",
-                   .evidence = ReflectionEvidence{
-                       .stage = "vertex+fragment", .resource_summary = {}, .merge_conflicts = {}}});
+                   .evidence = ReflectionEvidence{.stage = "vertex+fragment",
+                                                  .resource_summary = {},
+                                                  .merge_conflicts = {}},
+                   .session_identity = std::nullopt});
 
     AuthoringVerdict verdict;
     verdict.result = VerdictResult::degraded;
@@ -129,7 +134,8 @@ TEST_CASE("Authoring verdict fail for compile error", "[diagnostics][authoring]"
                                                .success = false,
                                                .messages = {},
                                                .timing_us = 0.0,
-                                               .cache_hit = false}});
+                                               .cache_hit = false},
+                   .session_identity = std::nullopt});
 
     AuthoringVerdict verdict;
     verdict.result = VerdictResult::fail;
@@ -168,8 +174,10 @@ TEST_CASE("Strict mode reflection conformance gate rejects empty reflection",
                    .frame_index = 0,
                    .timestamp_ns = 0,
                    .message = "Empty reflection contract (strict mode)",
-                   .evidence = ReflectionEvidence{
-                       .stage = "vertex+fragment", .resource_summary = {}, .merge_conflicts = {}}});
+                   .evidence = ReflectionEvidence{.stage = "vertex+fragment",
+                                                  .resource_summary = {},
+                                                  .merge_conflicts = {}},
+                   .session_identity = std::nullopt});
 
     AuthoringVerdict verdict;
     verdict.result = VerdictResult::fail;
@@ -203,7 +211,8 @@ TEST_CASE("Authoring events track provenance", "[diagnostics][authoring]") {
                    .evidence = ProvenanceEvidence{.original_file = "shader.slang",
                                                   .original_line = 0,
                                                   .rewrite_applied = false,
-                                                  .rewrite_description = {}}});
+                                                  .rewrite_description = {}},
+                   .session_identity = std::nullopt});
 
     auto authoring = sink_ptr->events_by_category(Category::authoring);
     REQUIRE(authoring.size() == 1);

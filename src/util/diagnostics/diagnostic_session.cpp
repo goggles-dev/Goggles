@@ -29,7 +29,7 @@ auto DiagnosticSession::create(DiagnosticPolicy policy) -> std::unique_ptr<Diagn
 
 void DiagnosticSession::emit(DiagnosticEvent event) {
     event.original_severity = event.severity;
-    event.session_identity = &m_identity;
+    event.session_identity = m_identity;
 
     if (m_policy.promote_fallback_to_error && event.severity == Severity::warning &&
         event.category == Category::runtime) {

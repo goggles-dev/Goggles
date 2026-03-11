@@ -249,7 +249,8 @@ void emit_preset_parse_event(diagnostics::DiagnosticSession& session,
                   .message = "Parsed preset '" + preset_path.filename().string() + "' (" +
                              std::to_string(preset.passes.size()) + " passes, " +
                              std::to_string(preset.textures.size()) + " textures)",
-                  .evidence = {}});
+                  .evidence = {},
+                  .session_identity = std::nullopt});
 }
 
 void emit_include_graph_event(diagnostics::DiagnosticSession& session, uint32_t pass_ordinal,
@@ -267,7 +268,8 @@ void emit_include_graph_event(diagnostics::DiagnosticSession& session, uint32_t 
          .evidence = diagnostics::ProvenanceEvidence{.original_file = shader_path.string(),
                                                      .original_line = 0,
                                                      .rewrite_applied = false,
-                                                     .rewrite_description = {}}});
+                                                     .rewrite_description = {}},
+         .session_identity = std::nullopt});
 }
 
 auto summarize_reflection(const ReflectionData& reflection) -> std::vector<std::string> {
@@ -301,7 +303,8 @@ void emit_reflection_event(diagnostics::DiagnosticSession& session, uint32_t pas
          .evidence = diagnostics::ReflectionEvidence{.stage = "vertex+fragment",
                                                      .resource_summary =
                                                          summarize_reflection(pass.reflection()),
-                                                     .merge_conflicts = {}}});
+                                                     .merge_conflicts = {}},
+         .session_identity = std::nullopt});
 }
 
 void emit_chain_manifest(diagnostics::DiagnosticSession& session, const PresetConfig& preset) {
@@ -338,7 +341,8 @@ void emit_chain_manifest(diagnostics::DiagnosticSession& session, const PresetCo
                   .frame_index = 0,
                   .timestamp_ns = 0,
                   .message = "Chain manifest generated",
-                  .evidence = {}});
+                  .evidence = {},
+                  .session_identity = std::nullopt});
     session.set_chain_manifest(std::move(manifest));
 }
 
@@ -356,7 +360,8 @@ void emit_pass_provenance(diagnostics::DiagnosticSession& session, uint32_t pass
          .evidence = diagnostics::ProvenanceEvidence{.original_file = shader_path.string(),
                                                      .original_line = 0,
                                                      .rewrite_applied = false,
-                                                     .rewrite_description = {}}});
+                                                     .rewrite_description = {}},
+         .session_identity = std::nullopt});
 }
 
 void emit_compile_diagnostics(diagnostics::DiagnosticSession& session, uint32_t pass_ordinal,
@@ -374,12 +379,13 @@ void emit_compile_diagnostics(diagnostics::DiagnosticSession& session, uint32_t 
              .timestamp_ns = 0,
              .message = std::string(compile_stage_string(stage.stage)) +
                         (stage.success ? " stage compiled" : " stage failed to compile"),
-             .evidence = diagnostics::CompileEvidence{
-                 .stage = std::string(compile_stage_string(stage.stage)),
-                 .success = stage.success,
-                 .messages = stage.messages,
-                 .timing_us = stage.timing_us,
-                 .cache_hit = stage.cache_hit}});
+             .evidence = diagnostics::CompileEvidence{.stage = std::string(
+                                                          compile_stage_string(stage.stage)),
+                                                      .success = stage.success,
+                                                      .messages = stage.messages,
+                                                      .timing_us = stage.timing_us,
+                                                      .cache_hit = stage.cache_hit},
+             .session_identity = std::nullopt});
     }
 
     if (!report.all_succeeded()) {
@@ -416,8 +422,10 @@ auto evaluate_reflection_gate(diagnostics::DiagnosticSession& session, uint32_t 
              .frame_index = 0,
              .timestamp_ns = 0,
              .message = "Empty reflection contract (strict mode)",
-             .evidence = diagnostics::ReflectionEvidence{
-                 .stage = "vertex+fragment", .resource_summary = {}, .merge_conflicts = {}}});
+             .evidence = diagnostics::ReflectionEvidence{.stage = "vertex+fragment",
+                                                         .resource_summary = {},
+                                                         .merge_conflicts = {}},
+             .session_identity = std::nullopt});
         verdict.result = diagnostics::VerdictResult::fail;
         verdict.findings.push_back(
             {.severity = diagnostics::Severity::error,
@@ -438,8 +446,10 @@ auto evaluate_reflection_gate(diagnostics::DiagnosticSession& session, uint32_t 
              .frame_index = 0,
              .timestamp_ns = 0,
              .message = "Empty reflection contract (compatibility mode: degraded)",
-             .evidence = diagnostics::ReflectionEvidence{
-                 .stage = "vertex+fragment", .resource_summary = {}, .merge_conflicts = {}}});
+             .evidence = diagnostics::ReflectionEvidence{.stage = "vertex+fragment",
+                                                         .resource_summary = {},
+                                                         .merge_conflicts = {}},
+             .session_identity = std::nullopt});
         if (verdict.result == diagnostics::VerdictResult::pass) {
             verdict.result = diagnostics::VerdictResult::degraded;
         }
@@ -470,7 +480,8 @@ void emit_authoring_verdict(diagnostics::DiagnosticSession& session,
                   .frame_index = 0,
                   .timestamp_ns = 0,
                   .message = "Authoring verdict: " + std::string(label),
-                  .evidence = {}});
+                  .evidence = {},
+                  .session_identity = std::nullopt});
 }
 
 struct BuiltPassArtifacts {
@@ -502,7 +513,8 @@ auto build_filter_pass(const VulkanContext& vk_ctx, ShaderRuntime& shader_runtim
                            .frame_index = 0,
                            .timestamp_ns = 0,
                            .message = preprocessed.error().message,
-                           .evidence = {}});
+                           .evidence = {},
+                           .session_identity = std::nullopt});
         }
         return make_error<BuiltPassArtifacts>(preprocessed.error().code,
                                               preprocessed.error().message);
@@ -579,7 +591,8 @@ auto ChainBuilder::build(const VulkanContext& vk_ctx, ShaderRuntime& shader_runt
                  .frame_index = 0,
                  .timestamp_ns = 0,
                  .message = preset_result.error().message,
-                 .evidence = {}});
+                 .evidence = {},
+                 .session_identity = std::nullopt});
         }
         return make_error<CompiledChain>(preset_result.error().code, preset_result.error().message);
     }

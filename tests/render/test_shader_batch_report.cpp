@@ -15,8 +15,9 @@ auto read_text(const std::filesystem::path& path) -> std::string {
 } // namespace
 
 TEST_CASE("Shader batch report writes diagnostic JSON", "[render][shader_batch]") {
-    const auto valid_preset =
-        std::filesystem::path(GOGGLES_SOURCE_DIR) / "shaders/retroarch/test/format.slangp";
+    const auto valid_preset = std::filesystem::path(GOGGLES_SOURCE_DIR) /
+                              "tests/util/test_data/filter_chain_diagnostics/authoring_corpus/"
+                              "valid/pass_through.slangp";
     REQUIRE(std::filesystem::exists(valid_preset));
 
     const auto temp_dir = std::filesystem::temp_directory_path() / "goggles_shader_batch_test";

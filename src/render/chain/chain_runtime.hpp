@@ -78,7 +78,7 @@ public:
 
 private:
     ChainRuntime() = default;
-    [[nodiscard]] auto sync_gpu_timestamp_pool() -> Result<void>;
+    void sync_gpu_timestamp_pool();
 
     std::unique_ptr<ShaderRuntime> m_shader_runtime;
     std::unique_ptr<ChainResources> m_resources;

@@ -38,6 +38,7 @@ public:
     [[nodiscard]] auto read_results(uint32_t frame_index)
         -> Result<std::vector<GpuTimestampSample>>;
 
+    void disable();
     [[nodiscard]] auto is_available() const -> bool;
 
 private:

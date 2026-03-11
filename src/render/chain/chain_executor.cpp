@@ -136,8 +136,25 @@ void flush_gpu_timestamps(diagnostics::DiagnosticSession* session,
         return;
     }
 
-    const auto durations = GOGGLES_MUST(gpu_timestamp_pool->read_results(frame_index));
-    for (const auto& sample : durations) {
+    auto durations = gpu_timestamp_pool->read_results(frame_index);
+    if (!durations) {
+        diagnostics::DiagnosticEvent event{};
+        event.severity = diagnostics::Severity::warning;
+        event.original_severity = diagnostics::Severity::warning;
+        event.category = diagnostics::Category::runtime;
+        event.localization = {.pass_ordinal = diagnostics::LocalizationKey::CHAIN_LEVEL,
+                              .stage = "timestamp",
+                              .resource = {}};
+        event.frame_index = frame_index;
+        event.message = std::format("Failed to read GPU timestamp results for frame {}: {}; "
+                                    "disabling GPU timestamps",
+                                    frame_index, durations.error().message);
+        session->emit(std::move(event));
+        gpu_timestamp_pool->disable();
+        return;
+    }
+
+    for (const auto& sample : *durations) {
         switch (sample.region) {
         case diagnostics::GpuTimestampRegion::pass:
             session->annotate_gpu_duration(diagnostics::TimelineEventType::pass_end,

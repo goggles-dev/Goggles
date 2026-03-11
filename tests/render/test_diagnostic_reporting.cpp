@@ -10,6 +10,11 @@ auto make_session(CaptureMode mode) -> std::unique_ptr<DiagnosticSession> {
     policy.capture_mode = mode;
     auto session = DiagnosticSession::create(policy);
 
+    SessionIdentity identity{};
+    identity.generation_id = 17;
+    identity.capture_mode = "reporting";
+    session->update_identity(std::move(identity));
+
     auto manifest = std::make_unique<ChainManifest>();
     ManifestPassEntry pass{};
     pass.ordinal = 2;
@@ -44,7 +49,8 @@ auto make_session(CaptureMode mode) -> std::unique_ptr<DiagnosticSession> {
                    .localization = {.pass_ordinal = 2, .stage = "bind", .resource = "History1"},
                    .frame_index = 4,
                    .message = "Fallback used",
-                   .evidence = BindingEvidence{.resource_id = "Source", .is_fallback = true}});
+                   .evidence = BindingEvidence{.resource_id = "Source", .is_fallback = true},
+                   .session_identity = std::nullopt});
     session->emit({.severity = Severity::info,
                    .original_severity = Severity::info,
                    .category = Category::authoring,
@@ -54,7 +60,8 @@ auto make_session(CaptureMode mode) -> std::unique_ptr<DiagnosticSession> {
                                                .success = true,
                                                .messages = {},
                                                .timing_us = 12.5,
-                                               .cache_hit = true}});
+                                               .cache_hit = true},
+                   .session_identity = std::nullopt});
     session->emit({.severity = Severity::warning,
                    .original_severity = Severity::warning,
                    .category = Category::authoring,
@@ -62,7 +69,8 @@ auto make_session(CaptureMode mode) -> std::unique_ptr<DiagnosticSession> {
                    .message = "Reflection degraded",
                    .evidence = ReflectionEvidence{.stage = "fragment",
                                                   .resource_summary = {"texture:Source@1"},
-                                                  .merge_conflicts = {}}});
+                                                  .merge_conflicts = {}},
+                   .session_identity = std::nullopt});
     session->emit({.severity = Severity::debug,
                    .original_severity = Severity::debug,
                    .category = Category::authoring,
@@ -71,15 +79,18 @@ auto make_session(CaptureMode mode) -> std::unique_ptr<DiagnosticSession> {
                    .evidence = ProvenanceEvidence{.original_file = "probe.slang",
                                                   .original_line = 8,
                                                   .rewrite_applied = false,
-                                                  .rewrite_description = {}}});
-    session->emit({.severity = Severity::info,
-                   .original_severity = Severity::info,
-                   .category = Category::capture,
-                   .localization = {.pass_ordinal = 2, .stage = "capture", .resource = "image"},
-                   .frame_index = 4,
-                   .message = "Captured pass output",
-                   .evidence = CaptureEvidence{
-                       .pass_ordinal = 2, .frame_index = 4, .image_ref = "capture.png"}});
+                                                  .rewrite_description = {}},
+                   .session_identity = std::nullopt});
+    session->emit(
+        {.severity = Severity::info,
+         .original_severity = Severity::info,
+         .category = Category::capture,
+         .localization = {.pass_ordinal = 2, .stage = "capture", .resource = "image"},
+         .frame_index = 4,
+         .message = "Captured pass output",
+         .evidence =
+             CaptureEvidence{.pass_ordinal = 2, .frame_index = 4, .image_ref = "capture.png"},
+         .session_identity = std::nullopt});
     return session;
 }
 
@@ -134,5 +145,20 @@ TEST_CASE("Forensic reporting includes full event timeline and artifact marker",
     const auto report = build_diagnostic_report(*session);
 
     CHECK(report.event_timeline.size() == session->events().size());
+    REQUIRE_FALSE(report.event_timeline.empty());
+    REQUIRE(report.event_timeline.front().session_identity.has_value());
+    CHECK(report.event_timeline.front().session_identity->generation_id == 17);
     CHECK(report.includes_artifact_bundle);
+}
+
+TEST_CASE("Forensic reports snapshot event session identity", "[diagnostics][reporting]") {
+    DiagnosticReport report;
+    {
+        auto session = make_session(CaptureMode::forensic);
+        report = build_diagnostic_report(*session);
+    }
+
+    REQUIRE_FALSE(report.event_timeline.empty());
+    REQUIRE(report.event_timeline.front().session_identity.has_value());
+    CHECK(report.event_timeline.front().session_identity->generation_id == 17);
 }

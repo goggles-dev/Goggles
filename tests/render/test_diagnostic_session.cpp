@@ -189,7 +189,7 @@ TEST_CASE("Session attaches identity to emitted events", "[diagnostics][session]
     session->emit(event);
 
     REQUIRE(sink_ptr->event_count() == 1);
-    REQUIRE(sink_ptr->all_events()[0].session_identity != nullptr);
+    REQUIRE(sink_ptr->all_events()[0].session_identity.has_value());
     REQUIRE(sink_ptr->all_events()[0].session_identity->generation_id == 42);
 }
 

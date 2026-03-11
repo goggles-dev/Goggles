@@ -34,6 +34,24 @@ auto capture_mode_name(diagnostics::CaptureMode mode) -> std::string {
     }
 }
 
+void emit_timestamp_event(diagnostics::DiagnosticSession* session, diagnostics::Severity severity,
+                          std::string message) {
+    if (session == nullptr) {
+        return;
+    }
+
+    diagnostics::DiagnosticEvent event{};
+    event.severity = severity;
+    event.original_severity = severity;
+    event.category = diagnostics::Category::runtime;
+    event.localization = {.pass_ordinal = diagnostics::LocalizationKey::CHAIN_LEVEL,
+                          .stage = "timestamp",
+                          .resource = {}};
+    event.frame_index = session->current_frame();
+    event.message = std::move(message);
+    session->emit(std::move(event));
+}
+
 auto create_readback_staging_buffer(vk::Device device, vk::PhysicalDevice physical_device,
                                     vk::DeviceSize size) -> Result<ReadbackStagingBuffer> {
     vk::BufferCreateInfo buffer_info{};
@@ -278,7 +296,7 @@ auto ChainRuntime::load_preset(const std::filesystem::path& preset_path) -> Resu
         m_resources->m_vk_ctx, *m_resources->m_shader_runtime, m_resources->m_num_sync_indices,
         *m_resources->m_texture_loader, preset_path, m_diagnostic_session.get()));
     m_resources->install(std::move(compiled), m_diagnostic_session.get());
-    GOGGLES_TRY(sync_gpu_timestamp_pool());
+    sync_gpu_timestamp_pool();
     m_controls.replay_values(*m_resources);
     return {};
 }
@@ -376,7 +394,7 @@ void ChainRuntime::create_diagnostic_session(diagnostics::DiagnosticPolicy polic
     identity.capture_mode = capture_mode_name(policy.capture_mode);
     m_diagnostic_session->update_identity(std::move(identity));
     m_diagnostic_session->register_sink(std::make_unique<diagnostics::LogSink>());
-    GOGGLES_MUST(sync_gpu_timestamp_pool());
+    sync_gpu_timestamp_pool();
 }
 
 void ChainRuntime::destroy_diagnostic_session() {
@@ -384,36 +402,35 @@ void ChainRuntime::destroy_diagnostic_session() {
     m_diagnostic_session.reset();
 }
 
-auto ChainRuntime::sync_gpu_timestamp_pool() -> Result<void> {
+void ChainRuntime::sync_gpu_timestamp_pool() {
     m_gpu_timestamp_pool.reset();
 
     if (!m_diagnostic_session || !m_resources) {
-        return {};
+        return;
     }
 
     if (m_diagnostic_session->policy().tier < diagnostics::ActivationTier::tier1) {
-        return {};
+        return;
     }
 
-    auto pool = GOGGLES_TRY(diagnostics::GpuTimestampPool::create(
+    auto pool_result = diagnostics::GpuTimestampPool::create(
         m_resources->m_vk_ctx.device, m_resources->m_vk_ctx.physical_device,
         static_cast<uint32_t>(std::max<size_t>(m_resources->pass_count(), 1U)),
-        m_resources->m_num_sync_indices));
+        m_resources->m_num_sync_indices);
+    if (!pool_result) {
+        emit_timestamp_event(m_diagnostic_session.get(), diagnostics::Severity::warning,
+                             "Failed to enable GPU timestamps: " + pool_result.error().message);
+        return;
+    }
+
+    auto pool = std::move(*pool_result);
 
     if (!pool->is_available()) {
-        diagnostics::DiagnosticEvent event{};
-        event.severity = diagnostics::Severity::info;
-        event.original_severity = diagnostics::Severity::info;
-        event.category = diagnostics::Category::runtime;
-        event.localization = {.pass_ordinal = diagnostics::LocalizationKey::CHAIN_LEVEL,
-                              .stage = "timestamp",
-                              .resource = {}};
-        event.message = "GPU timestamps are unavailable on this device";
-        m_diagnostic_session->emit(std::move(event));
+        emit_timestamp_event(m_diagnostic_session.get(), diagnostics::Severity::info,
+                             "GPU timestamps are unavailable on this device");
     }
 
     m_gpu_timestamp_pool = std::move(pool);
-    return {};
 }
 
 auto ChainRuntime::diagnostic_session() -> diagnostics::DiagnosticSession* {
