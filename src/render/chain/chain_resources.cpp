@@ -3,11 +3,38 @@
 #include "vulkan_result.hpp"
 
 #include <cmath>
+#include <format>
 #include <unordered_set>
+#include <util/diagnostics/diagnostic_event.hpp>
 #include <util/logging.hpp>
 #include <util/profiling.hpp>
 
 namespace goggles::render {
+
+namespace {
+
+auto capture_mode_name(diagnostics::CaptureMode mode) -> std::string {
+    switch (mode) {
+    case diagnostics::CaptureMode::minimal:
+        return "minimal";
+    case diagnostics::CaptureMode::investigate:
+        return "investigate";
+    case diagnostics::CaptureMode::forensic:
+        return "forensic";
+    case diagnostics::CaptureMode::standard:
+    default:
+        return "standard";
+    }
+}
+
+auto build_environment_fingerprint(const VulkanContext& vk_ctx) -> std::string {
+    const auto properties = vk_ctx.physical_device.getProperties();
+    return std::format("linux|device={}|vendor={:#x}|device_id={:#x}|api={:#x}|driver={:#x}",
+                       properties.deviceName.data(), properties.vendorID, properties.deviceID,
+                       properties.apiVersion, properties.driverVersion);
+}
+
+} // namespace
 
 ChainResources::~ChainResources() {
     shutdown();
@@ -66,7 +93,7 @@ auto ChainResources::create(const VulkanContext& vk_ctx, vk::Format swapchain_fo
     return make_result_ptr(std::move(resources));
 }
 
-void ChainResources::install(CompiledChain&& compiled) {
+void ChainResources::install(CompiledChain&& compiled, diagnostics::DiagnosticSession* session) {
     m_preset = std::move(compiled.preset);
     m_passes = std::move(compiled.passes);
     m_alias_to_pass_index = std::move(compiled.alias_to_pass_index);
@@ -84,6 +111,29 @@ void ChainResources::install(CompiledChain&& compiled) {
         m_feedback_framebuffers.try_emplace(pass_idx);
         m_feedback_initialized.try_emplace(pass_idx, false);
     }
+
+    ++m_generation_id;
+
+    if (session == nullptr) {
+        return;
+    }
+
+    auto identity = session->identity();
+    identity.generation_id = m_generation_id;
+    identity.capture_mode = capture_mode_name(session->policy().capture_mode);
+    identity.environment_fingerprint = build_environment_fingerprint(m_vk_ctx);
+    session->update_identity(std::move(identity));
+
+    diagnostics::DiagnosticEvent event{};
+    event.severity = diagnostics::Severity::info;
+    event.original_severity = diagnostics::Severity::info;
+    event.category = diagnostics::Category::runtime;
+    event.localization = {.pass_ordinal = diagnostics::LocalizationKey::CHAIN_LEVEL,
+                          .stage = "install",
+                          .resource = {}};
+    event.message = std::format("Installed compiled chain generation {} with {} pass(es)",
+                                m_generation_id, m_passes.size());
+    session->emit(std::move(event));
 }
 
 void ChainResources::shutdown() {

@@ -163,6 +163,9 @@ struct GogglesChainControlDesc {
     float step;
 };
 
+struct GogglesChainDiagnosticsCreateInfo;
+struct GogglesChainDiagnosticsSummary;
+
 #ifdef __cplusplus
 using goggles_chain_t = goggles_chain;
 using goggles_chain_control_snapshot_t = goggles_chain_control_snapshot;
@@ -181,6 +184,13 @@ using goggles_chain_stage_policy_t = GogglesChainStagePolicy;
 using goggles_chain_capabilities_t = GogglesChainCapabilities;
 using goggles_chain_error_last_info_t = GogglesChainErrorLastInfo;
 using goggles_chain_control_desc_t = GogglesChainControlDesc;
+using goggles_chain_diagnostics_create_info_t = GogglesChainDiagnosticsCreateInfo;
+using goggles_chain_diagnostics_summary_t = GogglesChainDiagnosticsSummary;
+using goggles_chain_diagnostic_event_cb = void(GOGGLES_CHAIN_CALL*)(uint32_t severity,
+                                                                    uint32_t category,
+                                                                    uint32_t pass_ordinal,
+                                                                    const char* message_utf8,
+                                                                    void* user_data);
 #else
 typedef struct goggles_chain goggles_chain_t;
 typedef struct goggles_chain_control_snapshot goggles_chain_control_snapshot_t;
@@ -199,6 +209,13 @@ typedef struct GogglesChainStagePolicy goggles_chain_stage_policy_t;
 typedef struct GogglesChainCapabilities goggles_chain_capabilities_t;
 typedef struct GogglesChainErrorLastInfo goggles_chain_error_last_info_t;
 typedef struct GogglesChainControlDesc goggles_chain_control_desc_t;
+typedef struct GogglesChainDiagnosticsCreateInfo goggles_chain_diagnostics_create_info_t;
+typedef struct GogglesChainDiagnosticsSummary goggles_chain_diagnostics_summary_t;
+typedef void(GOGGLES_CHAIN_CALL* goggles_chain_diagnostic_event_cb)(uint32_t severity,
+                                                                    uint32_t category,
+                                                                    uint32_t pass_ordinal,
+                                                                    const char* message_utf8,
+                                                                    void* user_data);
 #endif
 
 #define GOGGLES_CHAIN_STATUS_OK ((goggles_chain_status_t)0u)
@@ -211,6 +228,33 @@ typedef struct GogglesChainControlDesc goggles_chain_control_desc_t;
 #define GOGGLES_CHAIN_STATUS_OUT_OF_MEMORY ((goggles_chain_status_t)7u)
 #define GOGGLES_CHAIN_STATUS_NOT_SUPPORTED ((goggles_chain_status_t)8u)
 #define GOGGLES_CHAIN_STATUS_RUNTIME_ERROR ((goggles_chain_status_t)9u)
+#define GOGGLES_CHAIN_STATUS_DIAGNOSTICS_NOT_ACTIVE ((goggles_chain_status_t)10u)
+
+#define GOGGLES_CHAIN_DIAG_MODE_MINIMAL ((uint32_t)0u)
+#define GOGGLES_CHAIN_DIAG_MODE_STANDARD ((uint32_t)1u)
+#define GOGGLES_CHAIN_DIAG_MODE_INVESTIGATE ((uint32_t)2u)
+#define GOGGLES_CHAIN_DIAG_MODE_FORENSIC ((uint32_t)3u)
+
+#define GOGGLES_CHAIN_DIAG_POLICY_COMPATIBILITY ((uint32_t)0u)
+#define GOGGLES_CHAIN_DIAG_POLICY_STRICT ((uint32_t)1u)
+
+struct GogglesChainDiagnosticsCreateInfo {
+    uint32_t struct_size;
+    uint32_t reporting_mode;
+    uint32_t policy_mode;
+    uint32_t activation_tier;
+    uint32_t capture_frame_limit;
+    uint64_t retention_bytes;
+};
+
+struct GogglesChainDiagnosticsSummary {
+    uint32_t struct_size;
+    uint32_t reporting_mode;
+    uint32_t policy_mode;
+    uint32_t error_count;
+    uint32_t warning_count;
+    uint32_t info_count;
+};
 
 #define GOGGLES_CHAIN_STAGE_PRECHAIN ((goggles_chain_stage_t)0u)
 #define GOGGLES_CHAIN_STAGE_EFFECT ((goggles_chain_stage_t)1u)
@@ -317,6 +361,30 @@ goggles_chain_error_last_info_init(GOGGLES_CHAIN_NOARGS) {
     value.status = GOGGLES_CHAIN_STATUS_OK;
     value.vk_result = 0;
     value.subsystem_code = 0u;
+    return value;
+}
+
+static inline goggles_chain_diagnostics_create_info_t
+goggles_chain_diagnostics_create_info_init(GOGGLES_CHAIN_NOARGS) {
+    goggles_chain_diagnostics_create_info_t value;
+    value.struct_size = GOGGLES_CHAIN_STRUCT_SIZE(goggles_chain_diagnostics_create_info_t);
+    value.reporting_mode = GOGGLES_CHAIN_DIAG_MODE_STANDARD;
+    value.policy_mode = GOGGLES_CHAIN_DIAG_POLICY_COMPATIBILITY;
+    value.activation_tier = 0u;
+    value.capture_frame_limit = 1u;
+    value.retention_bytes = 256ULL * 1024ULL * 1024ULL;
+    return value;
+}
+
+static inline goggles_chain_diagnostics_summary_t
+goggles_chain_diagnostics_summary_init(GOGGLES_CHAIN_NOARGS) {
+    goggles_chain_diagnostics_summary_t value;
+    value.struct_size = GOGGLES_CHAIN_STRUCT_SIZE(goggles_chain_diagnostics_summary_t);
+    value.reporting_mode = GOGGLES_CHAIN_DIAG_MODE_STANDARD;
+    value.policy_mode = GOGGLES_CHAIN_DIAG_POLICY_COMPATIBILITY;
+    value.error_count = 0u;
+    value.warning_count = 0u;
+    value.info_count = 0u;
     return value;
 }
 
@@ -505,6 +573,23 @@ goggles_chain_control_reset_all(goggles_chain_t* chain);
 /// @note Leave `out_info` unchanged on failure.
 GOGGLES_CHAIN_API goggles_chain_status_t GOGGLES_CHAIN_CALL goggles_chain_error_last_info_get(
     const goggles_chain_t* chain, goggles_chain_error_last_info_t* out_info);
+
+GOGGLES_CHAIN_API goggles_chain_status_t GOGGLES_CHAIN_CALL
+goggles_chain_diagnostics_session_create(
+    goggles_chain_t* chain, const goggles_chain_diagnostics_create_info_t* create_info);
+
+GOGGLES_CHAIN_API goggles_chain_status_t GOGGLES_CHAIN_CALL
+goggles_chain_diagnostics_session_destroy(goggles_chain_t* chain);
+
+GOGGLES_CHAIN_API goggles_chain_status_t GOGGLES_CHAIN_CALL goggles_chain_diagnostics_sink_register(
+    goggles_chain_t* chain, goggles_chain_diagnostic_event_cb callback, void* user_data,
+    uint32_t* out_sink_id);
+
+GOGGLES_CHAIN_API goggles_chain_status_t GOGGLES_CHAIN_CALL
+goggles_chain_diagnostics_sink_unregister(goggles_chain_t* chain, uint32_t sink_id);
+
+GOGGLES_CHAIN_API goggles_chain_status_t GOGGLES_CHAIN_CALL goggles_chain_diagnostics_summary_get(
+    const goggles_chain_t* chain, goggles_chain_diagnostics_summary_t* out_summary);
 
 #undef GOGGLES_CHAIN_NOARGS
 #undef GOGGLES_CHAIN_NULLPTR

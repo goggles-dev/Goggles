@@ -6,9 +6,13 @@
 #include "filter_controls.hpp"
 #include "vulkan_context.hpp"
 
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <util/config.hpp>
+#include <util/diagnostics/diagnostic_policy.hpp>
+#include <util/diagnostics/diagnostic_session.hpp>
+#include <util/diagnostics/gpu_timestamp_pool.hpp>
 #include <util/error.hpp>
 #include <vector>
 #include <vulkan/vulkan.hpp>
@@ -20,6 +24,12 @@ class ShaderRuntime;
 struct FilterChainPaths {
     std::filesystem::path shader_dir;
     std::filesystem::path cache_dir;
+};
+
+struct CapturedImage {
+    std::vector<std::uint8_t> rgba;
+    uint32_t width = 0;
+    uint32_t height = 0;
 };
 
 /// @brief Boundary filter-chain API that owns runtime internals.
@@ -60,11 +70,20 @@ public:
     [[nodiscard]] auto reset_control_value(FilterControlId control_id) -> bool;
     void reset_controls();
 
+    void create_diagnostic_session(diagnostics::DiagnosticPolicy policy);
+    void destroy_diagnostic_session();
+    [[nodiscard]] auto diagnostic_session() -> diagnostics::DiagnosticSession*;
+    [[nodiscard]] auto diagnostic_session() const -> const diagnostics::DiagnosticSession*;
+    [[nodiscard]] auto capture_pass_output(uint32_t pass_ordinal) const -> Result<CapturedImage>;
+
 private:
     ChainRuntime() = default;
+    [[nodiscard]] auto sync_gpu_timestamp_pool() -> Result<void>;
 
     std::unique_ptr<ShaderRuntime> m_shader_runtime;
     std::unique_ptr<ChainResources> m_resources;
+    std::unique_ptr<diagnostics::GpuTimestampPool> m_gpu_timestamp_pool;
+    std::unique_ptr<diagnostics::DiagnosticSession> m_diagnostic_session;
     ChainExecutor m_executor;
     ChainControls m_controls;
     bool m_prechain_policy_enabled = true;

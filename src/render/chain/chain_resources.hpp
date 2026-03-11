@@ -14,6 +14,7 @@
 #include <memory>
 #include <render/texture/texture_loader.hpp>
 #include <unordered_map>
+#include <util/diagnostics/diagnostic_session.hpp>
 #include <vector>
 
 namespace goggles::render {
@@ -52,7 +53,7 @@ public:
     ChainResources& operator=(ChainResources&&) = delete;
 
     void shutdown();
-    void install(CompiledChain&& compiled);
+    void install(CompiledChain&& compiled, diagnostics::DiagnosticSession* session = nullptr);
 
     [[nodiscard]] auto ensure_framebuffers(const FramebufferExtents& extents,
                                            vk::Extent2D viewport_extent) -> Result<void>;
@@ -109,6 +110,7 @@ public:
     std::unordered_map<std::string, size_t> m_alias_to_pass_index;
     std::unordered_map<size_t, std::unique_ptr<Framebuffer>> m_feedback_framebuffers;
     std::unordered_map<size_t, bool> m_feedback_initialized;
+    uint64_t m_generation_id = 0;
 
     ScaleMode m_last_scale_mode = ScaleMode::stretch;
     uint32_t m_last_integer_scale = 0;

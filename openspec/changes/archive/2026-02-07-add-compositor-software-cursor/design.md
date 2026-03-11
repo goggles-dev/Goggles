@@ -54,5 +54,5 @@
 
 ## Open Questions
 
-- Should cursor size/color be configurable in `config/goggles.toml`?
+- Should cursor size/color be configurable in the runtime user config at `${XDG_CONFIG_HOME:-$HOME/.config}/goggles/goggles.toml`?
 - Should the software cursor be suppressed when Vulkan-layer frames are active?

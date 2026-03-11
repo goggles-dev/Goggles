@@ -13,6 +13,8 @@
 #include <string>
 #include <string_view>
 #include <util/config.hpp>
+#include <util/diagnostics/diagnostic_policy.hpp>
+#include <util/diagnostics/diagnostic_sink.hpp>
 #include <util/error.hpp>
 #include <vector>
 #include <vulkan/vulkan.hpp>
@@ -21,6 +23,12 @@ namespace {
 
 using goggles::ErrorCode;
 using goggles::ScaleMode;
+using goggles::diagnostics::ActivationTier;
+using goggles::diagnostics::CaptureMode;
+using goggles::diagnostics::DiagnosticEvent;
+using goggles::diagnostics::DiagnosticPolicy;
+using goggles::diagnostics::PolicyMode;
+using goggles::diagnostics::Severity;
 using goggles::render::ChainRuntime;
 using goggles::render::FilterChainPaths;
 using goggles::render::FilterControlDescriptor;
@@ -446,6 +454,67 @@ auto build_snapshot(const std::vector<FilterControlDescriptor>& controls,
     return GOGGLES_CHAIN_STATUS_OK;
 }
 
+class CallbackSink final : public goggles::diagnostics::DiagnosticSink {
+public:
+    CallbackSink(goggles_chain_diagnostic_event_cb callback, void* user_data)
+        : m_callback(callback), m_user_data(user_data) {}
+
+    void receive(const DiagnosticEvent& event) override {
+        if (m_callback == nullptr) {
+            return;
+        }
+        m_callback(static_cast<uint32_t>(event.severity), static_cast<uint32_t>(event.category),
+                   event.localization.pass_ordinal, event.message.c_str(), m_user_data);
+    }
+
+private:
+    goggles_chain_diagnostic_event_cb m_callback = nullptr;
+    void* m_user_data = nullptr;
+};
+
+auto to_capture_mode(uint32_t value) -> std::optional<CaptureMode> {
+    switch (value) {
+    case GOGGLES_CHAIN_DIAG_MODE_MINIMAL:
+        return CaptureMode::minimal;
+    case GOGGLES_CHAIN_DIAG_MODE_STANDARD:
+        return CaptureMode::standard;
+    case GOGGLES_CHAIN_DIAG_MODE_INVESTIGATE:
+        return CaptureMode::investigate;
+    case GOGGLES_CHAIN_DIAG_MODE_FORENSIC:
+        return CaptureMode::forensic;
+    default:
+        return std::nullopt;
+    }
+}
+
+auto to_policy_mode(uint32_t value) -> std::optional<PolicyMode> {
+    switch (value) {
+    case GOGGLES_CHAIN_DIAG_POLICY_COMPATIBILITY:
+        return PolicyMode::compatibility;
+    case GOGGLES_CHAIN_DIAG_POLICY_STRICT:
+        return PolicyMode::strict;
+    default:
+        return std::nullopt;
+    }
+}
+
+auto to_activation_tier(uint32_t value) -> std::optional<ActivationTier> {
+    switch (value) {
+    case 0u:
+        return ActivationTier::tier0;
+    case 1u:
+        return ActivationTier::tier1;
+    case 2u:
+        return ActivationTier::tier2;
+    default:
+        return std::nullopt;
+    }
+}
+
+auto diagnostics_not_active(goggles_chain_t* chain) -> goggles_chain_status_t {
+    return fail_chain(chain, GOGGLES_CHAIN_STATUS_DIAGNOSTICS_NOT_ACTIVE, ErrorSubsystem::runtime);
+}
+
 } // namespace
 
 extern "C" {
@@ -494,6 +563,8 @@ auto goggles_chain_status_to_string(goggles_chain_status_t status) -> const char
         return "NOT_SUPPORTED";
     case GOGGLES_CHAIN_STATUS_RUNTIME_ERROR:
         return "RUNTIME_ERROR";
+    case GOGGLES_CHAIN_STATUS_DIAGNOSTICS_NOT_ACTIVE:
+        return "DIAGNOSTICS_NOT_ACTIVE";
     default:
         return "UNKNOWN_STATUS";
     }
@@ -645,7 +716,7 @@ auto goggles_chain_preset_load_ex(goggles_chain_t* chain, const char* preset_pat
         }
 
         std::string preset_path;
-        if (!copy_required_utf8_span(preset_path_utf8, preset_path_len, &preset_path)) {
+        if (!copy_optional_utf8_span(preset_path_utf8, preset_path_len, &preset_path)) {
             return fail_chain(chain, GOGGLES_CHAIN_STATUS_INVALID_ARGUMENT,
                               ErrorSubsystem::validation);
         }
@@ -978,6 +1049,126 @@ auto goggles_chain_error_last_info_get(const goggles_chain_t* chain,
     out_info->status = chain->last_error.status;
     out_info->vk_result = chain->last_error.vk_result;
     out_info->subsystem_code = chain->last_error.subsystem_code;
+    return GOGGLES_CHAIN_STATUS_OK;
+}
+
+auto goggles_chain_diagnostics_session_create(
+    goggles_chain_t* chain, const goggles_chain_diagnostics_create_info_t* create_info)
+    -> goggles_chain_status_t {
+    try {
+        const auto state_status = ensure_chain_state(chain, false);
+        if (state_status != GOGGLES_CHAIN_STATUS_OK) {
+            return state_status;
+        }
+        if (create_info == nullptr ||
+            create_info->struct_size < sizeof(goggles_chain_diagnostics_create_info_t)) {
+            return fail_chain(chain, GOGGLES_CHAIN_STATUS_INVALID_ARGUMENT,
+                              ErrorSubsystem::validation);
+        }
+
+        const auto capture_mode = to_capture_mode(create_info->reporting_mode);
+        const auto policy_mode = to_policy_mode(create_info->policy_mode);
+        const auto activation_tier = to_activation_tier(create_info->activation_tier);
+        if (!capture_mode.has_value() || !policy_mode.has_value() || !activation_tier.has_value()) {
+            return fail_chain(chain, GOGGLES_CHAIN_STATUS_INVALID_ARGUMENT,
+                              ErrorSubsystem::validation);
+        }
+
+        DiagnosticPolicy policy;
+        policy.capture_mode = *capture_mode;
+        policy.mode = *policy_mode;
+        policy.tier = *activation_tier;
+        policy.capture_frame_limit = create_info->capture_frame_limit;
+        policy.retention_bytes = create_info->retention_bytes;
+        policy.promote_fallback_to_error = policy.mode == PolicyMode::strict;
+        policy.reflection_loss_is_fatal = policy.mode == PolicyMode::strict;
+        chain->runtime->create_diagnostic_session(policy);
+        return GOGGLES_CHAIN_STATUS_OK;
+    } catch (const std::bad_alloc&) {
+        return fail_exception(chain, true);
+    } catch (...) {
+        return fail_exception(chain, false);
+    }
+}
+
+auto goggles_chain_diagnostics_session_destroy(goggles_chain_t* chain) -> goggles_chain_status_t {
+    const auto state_status = ensure_chain_state(chain, false);
+    if (state_status != GOGGLES_CHAIN_STATUS_OK) {
+        return state_status;
+    }
+
+    chain->runtime->destroy_diagnostic_session();
+    return GOGGLES_CHAIN_STATUS_OK;
+}
+
+auto goggles_chain_diagnostics_sink_register(goggles_chain_t* chain,
+                                             goggles_chain_diagnostic_event_cb callback,
+                                             void* user_data, uint32_t* out_sink_id)
+    -> goggles_chain_status_t {
+    try {
+        const auto state_status = ensure_chain_state(chain, false);
+        if (state_status != GOGGLES_CHAIN_STATUS_OK) {
+            return state_status;
+        }
+        if (callback == nullptr || out_sink_id == nullptr) {
+            return fail_chain(chain, GOGGLES_CHAIN_STATUS_INVALID_ARGUMENT,
+                              ErrorSubsystem::validation);
+        }
+
+        auto* session = chain->runtime->diagnostic_session();
+        if (session == nullptr) {
+            return diagnostics_not_active(chain);
+        }
+
+        *out_sink_id = session->register_sink(std::make_unique<CallbackSink>(callback, user_data));
+        return GOGGLES_CHAIN_STATUS_OK;
+    } catch (const std::bad_alloc&) {
+        return fail_exception(chain, true);
+    } catch (...) {
+        return fail_exception(chain, false);
+    }
+}
+
+auto goggles_chain_diagnostics_sink_unregister(goggles_chain_t* chain, uint32_t sink_id)
+    -> goggles_chain_status_t {
+    const auto state_status = ensure_chain_state(chain, false);
+    if (state_status != GOGGLES_CHAIN_STATUS_OK) {
+        return state_status;
+    }
+
+    auto* session = chain->runtime->diagnostic_session();
+    if (session == nullptr) {
+        return diagnostics_not_active(chain);
+    }
+
+    session->unregister_sink(sink_id);
+    return GOGGLES_CHAIN_STATUS_OK;
+}
+
+auto goggles_chain_diagnostics_summary_get(const goggles_chain_t* chain,
+                                           goggles_chain_diagnostics_summary_t* out_summary)
+    -> goggles_chain_status_t {
+    const auto state_status = ensure_chain_state(chain, false);
+    if (state_status != GOGGLES_CHAIN_STATUS_OK) {
+        return state_status;
+    }
+    if (out_summary == nullptr ||
+        out_summary->struct_size < sizeof(goggles_chain_diagnostics_summary_t)) {
+        return fail_chain(chain, GOGGLES_CHAIN_STATUS_INVALID_ARGUMENT, ErrorSubsystem::validation);
+    }
+
+    const auto* session = chain->runtime->diagnostic_session();
+    if (session == nullptr) {
+        return diagnostics_not_active(const_cast<goggles_chain_t*>(chain));
+    }
+
+    out_summary->reporting_mode = static_cast<uint32_t>(session->policy().capture_mode);
+    out_summary->policy_mode = session->policy().mode == PolicyMode::strict
+                                   ? GOGGLES_CHAIN_DIAG_POLICY_STRICT
+                                   : GOGGLES_CHAIN_DIAG_POLICY_COMPATIBILITY;
+    out_summary->error_count = session->event_count(Severity::error);
+    out_summary->warning_count = session->event_count(Severity::warning);
+    out_summary->info_count = session->event_count(Severity::info);
     return GOGGLES_CHAIN_STATUS_OK;
 }
 

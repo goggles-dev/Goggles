@@ -8,6 +8,8 @@
 #include <render/texture/texture_loader.hpp>
 #include <unordered_map>
 #include <unordered_set>
+#include <util/diagnostics/compile_report.hpp>
+#include <util/diagnostics/diagnostic_session.hpp>
 #include <vector>
 
 namespace goggles::render {
@@ -24,6 +26,7 @@ struct LoadedTexture {
 struct CompiledChain {
     PresetConfig preset;
     std::vector<std::unique_ptr<FilterPass>> passes;
+    std::vector<diagnostics::CompileReport> compile_reports;
     std::unordered_map<std::string, size_t> alias_to_pass_index;
     uint32_t required_history_depth = 0;
     std::unordered_map<std::string, LoadedTexture> texture_registry;
@@ -35,7 +38,8 @@ class ChainBuilder {
 public:
     [[nodiscard]] static auto build(const VulkanContext& vk_ctx, ShaderRuntime& shader_runtime,
                                     uint32_t num_sync_indices, TextureLoader& texture_loader,
-                                    const std::filesystem::path& preset_path)
+                                    const std::filesystem::path& preset_path,
+                                    diagnostics::DiagnosticSession* session = nullptr)
         -> Result<CompiledChain>;
 
 private:

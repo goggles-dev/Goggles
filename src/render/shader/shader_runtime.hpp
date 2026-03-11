@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <util/diagnostics/compile_report.hpp>
 #include <util/error.hpp>
 #include <vector>
 
@@ -52,7 +53,8 @@ public:
     /// @brief Compiles a RetroArch shader pass and returns SPIR-V plus reflection.
     [[nodiscard]] auto compile_retroarch_shader(const std::string& vertex_source,
                                                 const std::string& fragment_source,
-                                                const std::string& module_name)
+                                                const std::string& module_name,
+                                                diagnostics::CompileReport* report = nullptr)
         -> Result<RetroArchCompiledShader>;
 
     /// @brief Returns the cache directory used by this runtime.

@@ -6,7 +6,8 @@
 - [x] 1.3 Add `integer_scale` field to `Config::Render` struct (default: `0` = auto)
 - [x] 1.4 Update `config.cpp` to parse `scale_mode` from TOML
 - [x] 1.5 Update `config.cpp` to parse `integer_scale` from TOML (validate 0-8 range)
-- [x] 1.6 Add settings to `config/goggles.toml` with documentation
+- [x] 1.6 Add settings to `config/goggles.template.toml` with documentation; first-run bootstrap
+      may materialize them into `${XDG_CONFIG_HOME:-$HOME/.config}/goggles/goggles.toml`
 
 ## 2. Viewport Calculation Utility
 - [x] 2.1 Create `ScaledViewport` struct (offset_x, offset_y, width, height)

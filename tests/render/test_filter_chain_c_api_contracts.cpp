@@ -19,18 +19,6 @@
 
 namespace {
 
-#if defined(__SANITIZE_ADDRESS__)
-constexpr bool ASAN_BUILD = true;
-#elif defined(__has_feature)
-#if __has_feature(address_sanitizer)
-constexpr bool ASAN_BUILD = true;
-#else
-constexpr bool ASAN_BUILD = false;
-#endif
-#else
-constexpr bool ASAN_BUILD = false;
-#endif
-
 constexpr uint32_t TEST_SYNC_INDICES = 2u;
 constexpr uint32_t INVALID_SYNC_INDICES = 9u;
 
@@ -259,6 +247,25 @@ struct ImageGuard {
     VkImageView view = VK_NULL_HANDLE;
 };
 
+struct DiagnosticCallbackState {
+    uint32_t count = 0u;
+    std::vector<std::string> messages;
+};
+
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+void record_diagnostic_callback(uint32_t severity, uint32_t category, uint32_t pass_ordinal,
+                                const char* message_utf8, void* user_data) {
+    (void)severity;
+    (void)category;
+    (void)pass_ordinal;
+    auto* state = static_cast<DiagnosticCallbackState*>(user_data);
+    if (state == nullptr) {
+        return;
+    }
+    ++state->count;
+    state->messages.emplace_back(message_utf8 != nullptr ? message_utf8 : "");
+}
+
 struct MemoryTypeQuery {
     uint32_t type_bits = 0u;
     VkMemoryPropertyFlags required_properties = 0u;
@@ -322,7 +329,7 @@ auto create_image(VkDevice device, VkPhysicalDevice physical_device, VkFormat fo
     image_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     image_info.imageType = VK_IMAGE_TYPE_2D;
     image_info.format = format;
-    image_info.extent = VkExtent3D{extent.width, extent.height, 1u};
+    image_info.extent = {.width = extent.width, .height = extent.height, .depth = 1u};
     image_info.mipLevels = 1u;
     image_info.arrayLayers = 1u;
     image_info.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -480,11 +487,6 @@ auto find_control_descriptor(const goggles_chain_control_snapshot_t* snapshot,
 } // namespace
 
 TEST_CASE("Filter chain C API lifecycle and out-param safety", "[filter_chain_c_api]") {
-    if constexpr (ASAN_BUILD) {
-        SKIP("Skipping Vulkan-backed C API lifecycle test under ASAN due external Vulkan loader "
-             "leak noise");
-    }
-
     REQUIRE(goggles_chain_destroy(nullptr) == GOGGLES_CHAIN_STATUS_OK);
 
     goggles_chain_t* runtime = nullptr;
@@ -583,11 +585,6 @@ TEST_CASE("Filter chain C API lifecycle and out-param safety", "[filter_chain_c_
 }
 
 TEST_CASE("Filter chain C API validation matrix", "[filter_chain_c_api][validation]") {
-    if constexpr (ASAN_BUILD) {
-        SKIP("Skipping Vulkan-backed C API validation test under ASAN due external Vulkan loader "
-             "leak noise");
-    }
-
     VulkanRuntimeFixture fixture;
     if (!fixture.available()) {
         SKIP("Skipping Vulkan-backed C API validation test because no Vulkan graphics device is "
@@ -769,11 +766,6 @@ TEST_CASE("Filter chain C API validation matrix", "[filter_chain_c_api][validati
 }
 
 TEST_CASE("Filter chain C API snapshot contract", "[filter_chain_c_api][snapshot]") {
-    if constexpr (ASAN_BUILD) {
-        SKIP("Skipping Vulkan-backed C API snapshot test under ASAN due external Vulkan loader "
-             "leak noise");
-    }
-
     REQUIRE(goggles_chain_control_snapshot_get_count(nullptr) == 0u);
     REQUIRE(goggles_chain_control_snapshot_get_data(nullptr) == nullptr);
     REQUIRE(goggles_chain_control_snapshot_destroy(nullptr) == GOGGLES_CHAIN_STATUS_OK);
@@ -822,11 +814,6 @@ TEST_CASE("Filter chain C API snapshot contract", "[filter_chain_c_api][snapshot
 
 TEST_CASE("Filter chain C API prechain filter_type preserves nearest mode",
           "[filter_chain_c_api][controls]") {
-    if constexpr (ASAN_BUILD) {
-        SKIP("Skipping Vulkan-backed C API prechain control test under ASAN due external Vulkan "
-             "loader leak noise");
-    }
-
     VulkanRuntimeFixture fixture;
     if (!fixture.available()) {
         SKIP("Skipping Vulkan-backed C API prechain control test because no Vulkan graphics "
@@ -901,11 +888,6 @@ TEST_CASE("Filter chain C API prechain filter_type preserves nearest mode",
 }
 
 TEST_CASE("Filter chain C API control and record validation", "[filter_chain_c_api][record]") {
-    if constexpr (ASAN_BUILD) {
-        SKIP("Skipping Vulkan-backed C API record test under ASAN due external Vulkan loader leak "
-             "noise");
-    }
-
     VulkanRuntimeFixture fixture;
     if (!fixture.available()) {
         SKIP("Skipping Vulkan-backed C API record test because no Vulkan graphics device is "
@@ -1014,7 +996,7 @@ TEST_CASE("Filter chain C API control and record validation", "[filter_chain_c_a
         create_command_buffer(vk_context.device, vk_context.graphics_queue_family_index);
     REQUIRE(command_buffer.has_value());
 
-    constexpr VkExtent2D EXTENT_1X1{1u, 1u};
+    constexpr VkExtent2D EXTENT_1X1{.width = 1u, .height = 1u};
     auto source_image =
         create_image(vk_context.device, vk_context.physical_device, VK_FORMAT_B8G8R8A8_UNORM,
                      VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, EXTENT_1X1);
@@ -1065,4 +1047,64 @@ TEST_CASE("Filter chain C API ABI durability", "[filter_chain_c_api][abi]") {
     REQUIRE(goggles_chain_api_version() == GOGGLES_CHAIN_API_VERSION);
     REQUIRE(goggles_chain_abi_version() == GOGGLES_CHAIN_ABI_VERSION);
     REQUIRE(goggles_chain_status_to_string(GOGGLES_CHAIN_STATUS_OK) == std::string_view("OK"));
+    REQUIRE(goggles_chain_status_to_string(GOGGLES_CHAIN_STATUS_DIAGNOSTICS_NOT_ACTIVE) ==
+            std::string_view("DIAGNOSTICS_NOT_ACTIVE"));
+}
+
+TEST_CASE("Filter chain C API diagnostics lifecycle and summary",
+          "[filter_chain_c_api][diagnostics]") {
+    VulkanRuntimeFixture fixture;
+    if (!fixture.available()) {
+        SKIP("Skipping Vulkan-backed C API diagnostics test because no Vulkan graphics device is "
+             "available");
+    }
+    const auto vk_context = fixture.context();
+
+    const auto shader_root = std::filesystem::path(GOGGLES_SOURCE_DIR) / "shaders";
+    const auto preset_path =
+        std::filesystem::path(GOGGLES_SOURCE_DIR) / "shaders/retroarch/test/format.slangp";
+    REQUIRE(std::filesystem::exists(shader_root));
+    REQUIRE(std::filesystem::exists(preset_path));
+
+    CacheDirGuard cache_dir_guard(make_cache_dir());
+    ChainGuard guard;
+    guard.chain = create_ready_chain(vk_context, shader_root, cache_dir_guard.dir, preset_path);
+    REQUIRE(guard.chain != nullptr);
+
+    uint32_t sink_id = 0u;
+    REQUIRE(goggles_chain_diagnostics_sink_register(guard.chain, record_diagnostic_callback,
+                                                    nullptr, &sink_id) ==
+            GOGGLES_CHAIN_STATUS_DIAGNOSTICS_NOT_ACTIVE);
+
+    auto create_info = goggles_chain_diagnostics_create_info_init();
+    create_info.reporting_mode = GOGGLES_CHAIN_DIAG_MODE_STANDARD;
+    create_info.policy_mode = GOGGLES_CHAIN_DIAG_POLICY_STRICT;
+    REQUIRE(goggles_chain_diagnostics_session_create(guard.chain, &create_info) ==
+            GOGGLES_CHAIN_STATUS_OK);
+
+    DiagnosticCallbackState callback_state;
+    REQUIRE(goggles_chain_diagnostics_sink_register(guard.chain, record_diagnostic_callback,
+                                                    &callback_state,
+                                                    &sink_id) == GOGGLES_CHAIN_STATUS_OK);
+
+    const auto preset_utf8 = preset_path.string();
+    REQUIRE(goggles_chain_preset_load(guard.chain, preset_utf8.c_str()) == GOGGLES_CHAIN_STATUS_OK);
+
+    auto summary = goggles_chain_diagnostics_summary_init();
+    REQUIRE(goggles_chain_diagnostics_summary_get(guard.chain, &summary) ==
+            GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(summary.reporting_mode == GOGGLES_CHAIN_DIAG_MODE_STANDARD);
+    REQUIRE(summary.policy_mode == GOGGLES_CHAIN_DIAG_POLICY_STRICT);
+    REQUIRE(summary.info_count + summary.warning_count + summary.error_count > 0u);
+    REQUIRE(callback_state.count > 0u);
+
+    REQUIRE(goggles_chain_diagnostics_sink_unregister(guard.chain, sink_id) ==
+            GOGGLES_CHAIN_STATUS_OK);
+    const auto count_after_unregister = callback_state.count;
+    REQUIRE(goggles_chain_preset_load(guard.chain, preset_utf8.c_str()) == GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(callback_state.count == count_after_unregister);
+
+    REQUIRE(goggles_chain_diagnostics_session_destroy(guard.chain) == GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(goggles_chain_diagnostics_summary_get(guard.chain, &summary) ==
+            GOGGLES_CHAIN_STATUS_DIAGNOSTICS_NOT_ACTIVE);
 }

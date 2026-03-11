@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <optional>
 #include <render/chain/filter_controls.hpp>
 #include <util/config.hpp>
 #include <util/error.hpp>
@@ -25,6 +26,7 @@ struct RenderSettings {
     std::string gpu_selector;
     uint32_t source_width = 0;
     uint32_t source_height = 0;
+    std::optional<Config::Diagnostics> diagnostics;
 };
 
 struct FilterChainStagePolicy {
@@ -168,6 +170,7 @@ private:
 
     std::filesystem::path m_shader_dir;
     std::filesystem::path m_cache_dir;
+    std::optional<Config::Diagnostics> m_diagnostics_config;
 
     uint32_t m_integer_scale = 0;
     ScaleMode m_scale_mode = ScaleMode::stretch;

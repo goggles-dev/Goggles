@@ -8,6 +8,7 @@
 #include <render/shader/retroarch_preprocessor.hpp>
 #include <render/shader/slang_reflect.hpp>
 #include <unordered_map>
+#include <util/diagnostics/compile_report.hpp>
 #include <vector>
 
 namespace goggles::render {
@@ -42,7 +43,9 @@ public:
     /// @brief Creates a filter pass from compiled shader sources.
     /// @return A pass or an error.
     [[nodiscard]] static auto create(const VulkanContext& vk_ctx, ShaderRuntime& shader_runtime,
-                                     const FilterPassConfig& config) -> ResultPtr<FilterPass>;
+                                     const FilterPassConfig& config,
+                                     diagnostics::CompileReport* compile_report = nullptr)
+        -> ResultPtr<FilterPass>;
 
     ~FilterPass() override;
 
@@ -104,6 +107,21 @@ public:
     [[nodiscard]] auto texture_bindings() const -> const std::vector<TextureBinding>& {
         return m_merged_reflection.textures;
     }
+    [[nodiscard]] auto reflection() const -> const ReflectionData& { return m_merged_reflection; }
+    [[nodiscard]] auto shader_name() const -> const std::string& { return m_shader_name; }
+    [[nodiscard]] auto has_texture_binding(const std::string& name) const -> bool {
+        return m_texture_bindings.contains(name);
+    }
+    [[nodiscard]] auto source_size() const -> const SizeVec4& { return m_binder.source_size(); }
+    [[nodiscard]] auto output_size() const -> const SizeVec4& { return m_binder.output_size(); }
+    [[nodiscard]] auto original_size() const -> const SizeVec4& { return m_binder.original_size(); }
+    [[nodiscard]] auto final_viewport_size() const -> const SizeVec4& {
+        return m_binder.final_viewport_size();
+    }
+    [[nodiscard]] auto frame_count_value() const -> uint32_t { return m_binder.frame_count(); }
+    [[nodiscard]] auto alias_size(const std::string& alias) const -> std::optional<SizeVec4> {
+        return m_binder.get_alias_size(alias);
+    }
 
 private:
     FilterPass() = default;
@@ -152,6 +170,7 @@ private:
 
     std::vector<uint8_t> m_push_data;
     std::vector<ShaderParameter> m_parameters;
+    std::string m_shader_name;
     std::unordered_map<std::string, PassTextureBinding> m_texture_bindings;
     std::unordered_map<std::string, size_t> m_ubo_member_offsets;
     std::unordered_map<std::string, float> m_parameter_overrides;
