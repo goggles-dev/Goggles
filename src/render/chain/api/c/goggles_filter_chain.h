@@ -462,6 +462,13 @@ GOGGLES_CHAIN_API goggles_chain_status_t GOGGLES_CHAIN_CALL goggles_chain_preset
 GOGGLES_CHAIN_API goggles_chain_status_t GOGGLES_CHAIN_CALL
 goggles_chain_handle_resize(goggles_chain_t* chain, goggles_chain_extent2d_t new_target_extent);
 
+/// @brief Rebuild output-side runtime state for a new host target format.
+/// @param chain Provide a live runtime in `CREATED` or `READY` state.
+/// @param target_format Provide a concrete Vulkan color format.
+/// @return Return `GOGGLES_CHAIN_STATUS_OK` on success.
+GOGGLES_CHAIN_API goggles_chain_status_t GOGGLES_CHAIN_CALL
+goggles_chain_output_retarget_vk(goggles_chain_t* chain, VkFormat target_format);
+
 /// @brief Record filter-chain commands into a host command buffer.
 /// @param chain Provide a runtime in `READY` state.
 /// @param record_info Provide valid frame input/output views and frame index.

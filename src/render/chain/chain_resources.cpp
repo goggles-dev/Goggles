@@ -34,6 +34,32 @@ auto build_environment_fingerprint(const VulkanContext& vk_ctx) -> std::string {
                        properties.apiVersion, properties.driverVersion);
 }
 
+void shutdown_output_state(ChainResources::OutputState& output_state) {
+    for (auto& pass : output_state.postchain_passes) {
+        pass->shutdown();
+    }
+    output_state.postchain_passes.clear();
+    output_state.postchain_framebuffers.clear();
+    output_state.swapchain_format = vk::Format::eUndefined;
+}
+
+auto build_output_state(const VulkanContext& vk_ctx, ShaderRuntime& shader_runtime,
+                        const std::filesystem::path& shader_dir, vk::Format swapchain_format,
+                        uint32_t num_sync_indices) -> Result<ChainResources::OutputState> {
+    ChainResources::OutputState output_state{};
+    output_state.swapchain_format = swapchain_format;
+
+    OutputPassConfig output_config{
+        .target_format = swapchain_format,
+        .num_sync_indices = num_sync_indices,
+        .shader_dir = shader_dir,
+    };
+    output_state.postchain_passes.push_back(
+        GOGGLES_TRY(OutputPass::create(vk_ctx, shader_runtime, output_config)));
+
+    return output_state;
+}
+
 } // namespace
 
 ChainResources::~ChainResources() {
@@ -49,20 +75,13 @@ auto ChainResources::create(const VulkanContext& vk_ctx, vk::Format swapchain_fo
     auto resources = std::unique_ptr<ChainResources>(new ChainResources());
 
     resources->m_vk_ctx = vk_ctx;
-    resources->m_swapchain_format = swapchain_format;
     resources->m_num_sync_indices = num_sync_indices;
     resources->m_shader_runtime = &shader_runtime;
     resources->m_shader_dir = shader_dir;
     resources->m_prechain_requested_resolution = source_resolution;
     resources->m_prechain_parameters = DownsamplePass::shader_parameters(0.0F);
-
-    OutputPassConfig output_config{
-        .target_format = swapchain_format,
-        .num_sync_indices = num_sync_indices,
-        .shader_dir = shader_dir,
-    };
-    resources->m_postchain_passes.push_back(
-        GOGGLES_TRY(OutputPass::create(vk_ctx, shader_runtime, output_config)));
+    resources->m_output_state = GOGGLES_TRY(
+        build_output_state(vk_ctx, shader_runtime, shader_dir, swapchain_format, num_sync_indices));
 
     resources->m_texture_loader = std::make_unique<TextureLoader>(
         vk_ctx.device, vk_ctx.physical_device, vk_ctx.command_pool, vk_ctx.graphics_queue);
@@ -154,11 +173,7 @@ void ChainResources::shutdown() {
     m_prechain_passes.clear();
     m_prechain_framebuffers.clear();
 
-    for (auto& pass : m_postchain_passes) {
-        pass->shutdown();
-    }
-    m_postchain_passes.clear();
-    m_postchain_framebuffers.clear();
+    shutdown_output_state(m_output_state);
 }
 
 auto ChainResources::handle_resize(vk::Extent2D new_viewport_extent) -> Result<void> {
@@ -183,6 +198,22 @@ auto ChainResources::handle_resize(vk::Extent2D new_viewport_extent) -> Result<v
 
     GOGGLES_TRY(ensure_framebuffers(
         {.viewport = new_viewport_extent, .source = m_last_source_extent}, {vp.width, vp.height}));
+    return {};
+}
+
+auto ChainResources::retarget_output(vk::Format swapchain_format) -> Result<void> {
+    if (swapchain_format == vk::Format::eUndefined) {
+        return make_error<void>(ErrorCode::invalid_data, "Output retarget format is undefined");
+    }
+
+    if (m_output_state.swapchain_format == swapchain_format) {
+        return {};
+    }
+
+    auto candidate = GOGGLES_TRY(build_output_state(m_vk_ctx, *m_shader_runtime, m_shader_dir,
+                                                    swapchain_format, m_num_sync_indices));
+    shutdown_output_state(m_output_state);
+    m_output_state = std::move(candidate);
     return {};
 }
 

@@ -198,7 +198,15 @@ auto VulkanBackend::recreate_swapchain(uint32_t width, uint32_t height, vk::Form
     GOGGLES_TRY(m_render_output.create_swapchain(m_vulkan_context, width, height, target_format));
 
     if (recreate_filter_chain) {
-        GOGGLES_TRY(init_filter_chain());
+        if (!m_filter_chain_controller.has_filter_chain()) {
+            GOGGLES_TRY(init_filter_chain());
+        } else {
+            GOGGLES_TRY(m_filter_chain_controller.retarget_filter_chain(
+                backend_internal::FilterChainController::OutputTarget{
+                    .format = target_format,
+                    .extent = m_render_output.target_extent(),
+                }));
+        }
     } else if (m_filter_chain_controller.has_filter_chain()) {
         GOGGLES_TRY(m_filter_chain_controller.handle_resize(m_render_output.target_extent()));
     }
@@ -591,6 +599,7 @@ auto VulkanBackend::make_filter_chain_build_config() const
         .vulkan_context = m_vulkan_context.boundary_context(m_render_output.command_pool),
         .graphics_queue_family_index = m_vulkan_context.graphics_queue_family,
         .target_format = m_render_output.swapchain_format,
+        .target_extent = m_render_output.target_extent(),
         .num_sync_indices = backend_internal::RenderOutput::MAX_FRAMES_IN_FLIGHT,
         .shader_dir = m_shader_dir,
         .cache_dir = m_cache_dir,

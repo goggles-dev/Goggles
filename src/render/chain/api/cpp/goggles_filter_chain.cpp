@@ -268,6 +268,16 @@ auto FilterChainRuntime::handle_resize(vk::Extent2D new_target_extent) -> Result
     return status_to_result(m_handle, status, "Failed to resize filter chain");
 }
 
+auto FilterChainRuntime::retarget_output(vk::Format target_format) -> Result<void> {
+    if (m_handle == nullptr) {
+        return make_error<void>(ErrorCode::vulkan_init_failed, "Filter chain not initialized");
+    }
+
+    const auto status =
+        goggles_chain_output_retarget_vk(m_handle, static_cast<VkFormat>(target_format));
+    return status_to_result(m_handle, status, "Failed to retarget filter chain output");
+}
+
 auto FilterChainRuntime::set_stage_policy(const ChainStagePolicy& policy) -> Result<void> {
     if (m_handle == nullptr) {
         return make_error<void>(ErrorCode::vulkan_init_failed, "Filter chain not initialized");

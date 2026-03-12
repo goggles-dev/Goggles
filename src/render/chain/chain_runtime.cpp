@@ -308,6 +308,14 @@ auto ChainRuntime::handle_resize(vk::Extent2D new_viewport_extent) -> Result<voi
     return m_resources->handle_resize(new_viewport_extent);
 }
 
+auto ChainRuntime::retarget_output(vk::Format swapchain_format) -> Result<void> {
+    if (!m_resources) {
+        return make_error<void>(ErrorCode::vulkan_init_failed, "Filter chain not initialized");
+    }
+
+    return m_resources->retarget_output(swapchain_format);
+}
+
 void ChainRuntime::record(vk::CommandBuffer cmd, vk::Image original_image,
                           vk::ImageView original_view, vk::Extent2D original_extent,
                           vk::ImageView target_view, vk::Extent2D viewport_extent,

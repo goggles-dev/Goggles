@@ -1,7 +1,8 @@
 # render-pipeline Specification
 
 ## Purpose
-TBD - created by archiving change add-render-pipeline. Update Purpose after archive.
+Define the runtime render-pipeline contract for Goggles, including swapchain/output behavior,
+filter-chain lifecycle, shader processing, and presentation-facing guarantees.
 ## Requirements
 ### Requirement: Shader Runtime Compilation
 
@@ -50,28 +51,25 @@ The blit pipeline SHALL sample imported textures using a Vulkan sampler with lin
 
 ### Requirement: Swapchain Format Matching
 
-The render backend SHALL match swapchain format color space to source image format to ensure correct pixel value preservation.
+The render backend SHALL match swapchain output color space to the current source image
+color-space classification to preserve pixel values. When the source classification changes without
+a preset change request, the pipeline SHALL retarget only swapchain-bound output resources needed
+for the new output format and SHALL NOT treat the event as a full preset reload.
 
-#### Scenario: UNORM source format
+#### Scenario: Source color-space change retargets output side
 
-- **GIVEN** captured image uses a UNORM format (e.g., `A2R10G10B10_UNORM`)
-- **WHEN** swapchain is created or format mismatch detected
-- **THEN** swapchain SHALL use `B8G8R8A8_UNORM` format
-- **AND** sampler SHALL NOT linearize values
-- **AND** hardware SHALL NOT apply gamma encoding on write
+- **GIVEN** a preset is already active and rendering with an SRGB-matched output path
+- **WHEN** the source image classification changes to UNORM
+- **THEN** the swapchain SHALL be recreated with a matching UNORM output format
+- **AND** the output-side runtime resources bound to swapchain presentation SHALL be retargeted for
+  the new format
 
-#### Scenario: SRGB source format
+#### Scenario: Output retarget preserves active preset state
 
-- **GIVEN** captured image uses an SRGB format (e.g., `B8G8R8A8_SRGB`)
-- **WHEN** swapchain is created or format mismatch detected
-- **THEN** swapchain SHALL use `B8G8R8A8_SRGB` format
-- **AND** sampler linearization and hardware encoding SHALL cancel out
-
-#### Scenario: Format change triggers swapchain recreation
-
-- **GIVEN** swapchain exists with one color space type
-- **WHEN** source format changes to different color space type
-- **THEN** swapchain SHALL be recreated with matching format
+- **GIVEN** a source color-space change triggers output-format retargeting
+- **WHEN** the retarget succeeds
+- **THEN** the active preset selection SHALL remain unchanged
+- **AND** existing parameter overrides and control layout SHALL remain unchanged
 
 ### Requirement: Pipeline Extensibility
 
@@ -1308,21 +1306,30 @@ The semantic binder SHALL provide Rotation push constant for display orientation
 - **THEN** Rotation SHALL be 3
 
 ### Requirement: Runtime Shader Preset Reload
-The render pipeline SHALL support rebuilding the RetroArch filter chain at runtime when the application requests a new `.slangp` preset without forcing an application restart.
+The render pipeline SHALL support rebuilding the RetroArch filter chain at runtime when the
+application explicitly requests a new `.slangp` preset or explicitly reloads the current preset.
+Explicit preset reload SHALL remain a full preset/runtime rebuild and SHALL remain distinct from
+output-format retargeting caused by source color-space changes.
 
-#### Scenario: UI-triggered reload success
-- **GIVEN** the Shader Controls panel emits a preset selection event containing `<path>`
-- **WHEN** the render pipeline handles the event
-- **THEN** it SHALL wait for the in-flight frame to complete
-- **AND** it SHALL destroy the current filter chain state
-- **AND** it SHALL parse and instantiate the new preset from `<path>`
-- **AND** the next frame SHALL render using the newly loaded passes
+#### Scenario: Explicit preset reload performs full rebuild
+- **GIVEN** a preset is active and the application explicitly requests a preset reload
+- **WHEN** the render pipeline handles the request
+- **THEN** it SHALL perform full preset reload behavior
+- **AND** preset parsing, include expansion, shader compilation/reflection, preset texture loading,
+  and effect-pass setup SHALL be re-executed before the replacement runtime becomes active
 
-#### Scenario: Reload failure fallback
-- **GIVEN** the render pipeline attempts to load a preset that fails to parse or compile
-- **WHEN** the failure occurs
-- **THEN** the previously active preset SHALL remain bound and continue rendering
-- **AND** the failure SHALL be reported back to the UI/log so the user can pick a different preset
+#### Scenario: Output retarget is not an explicit preset reload
+- **GIVEN** the active preset path and runtime controls have not changed
+- **WHEN** only the source color-space classification changes
+- **THEN** the pipeline SHALL NOT report or execute the event as an explicit preset reload
+- **AND** the next frame after a successful transition SHALL continue using the same preset-derived
+  effect behavior
+
+#### Scenario: Explicit reload failure preserves previous runtime
+- **GIVEN** the application explicitly requests a preset reload
+- **WHEN** the requested reload fails before replacement activation
+- **THEN** the previously active runtime SHALL remain active for rendering
+- **AND** the failure SHALL be reported without leaving a partially activated replacement runtime
 
 ### Requirement: Passthrough Mode Toggle
 The render pipeline SHALL provide a passthrough mode that bypasses all filter passes and blits the captured frame directly when requested, while remembering the last successful preset for restoration.
@@ -1572,38 +1579,40 @@ In headless mode, frame submission SHALL queue render commands and wait on a fen
 
 ### Requirement: Async Filter Lifecycle Safety
 
-The render pipeline SHALL preserve async preset reload, chain swap, and resize safety behavior after introducing the `goggles-filter-chain` boundary.
+The render pipeline SHALL preserve async preset reload, output-format retarget, chain swap, and
+resize safety behavior after introducing the `goggles-filter-chain` boundary.
 
-#### Scenario: Async reload and swap notification ordering
+#### Scenario: Output retarget completion is observable only after activation
 
-- **GIVEN** a preset reload is executed asynchronously
-- **WHEN** the new chain becomes active for rendering
-- **THEN** swap notification SHALL be emitted only after activation of the new chain
-- **AND** consumers of swap notification SHALL observe the new chain as active state
+- **GIVEN** an output-format retarget is performed asynchronously
+- **WHEN** the retargeted runtime becomes active for rendering
+- **THEN** swap-complete notification SHALL be observable only after the retargeted runtime is active
+- **AND** consumers SHALL observe the retargeted output path as current state
 
-#### Scenario: Chain-swapped signal observability
+#### Scenario: Output retarget failure keeps prior runtime active
 
-- **GIVEN** an async reload completes and activates a new chain/runtime
-- **WHEN** host code consumes the chain-swapped signal
-- **THEN** the signal SHALL indicate swap completion only after the new chain/runtime is active
-- **AND** the first successful consumption SHALL clear the current swap indication
-- **AND** additional consumption attempts before the next successful activation SHALL report no swap-complete indication
+- **GIVEN** an output-format retarget attempt fails before activation
+- **WHEN** host code checks active runtime state and swap-complete state
+- **THEN** the previously active runtime SHALL remain the active rendering runtime
+- **AND** no swap-complete indication SHALL be emitted for the failed retarget
 
-#### Scenario: Async reload activation failure behavior
+#### Scenario: Pending reload is retargeted before swap
 
-- **GIVEN** an async reload attempt fails before activating a replacement chain/runtime
-- **WHEN** host code checks active runtime state and chain-swapped signal state
-- **THEN** the previously active chain/runtime SHALL remain active for rendering
-- **AND** the chain-swapped signal SHALL remain unset and SHALL NOT report swap completion
-- **AND** repeated signal consumption attempts before the next successful activation SHALL continue reporting no swap-complete indication
+- **GIVEN** an explicit preset reload is building a pending runtime
+- **AND** the authoritative source color-space classification changes before that runtime becomes
+  active
+- **WHEN** the pending runtime is prepared for swap
+- **THEN** the pending runtime SHALL be retargeted to the latest output format before activation
+- **AND** the system SHALL NOT swap in a runtime bound to stale output format and immediately retarget
+  it afterward
 
-#### Scenario: Deferred destroy safety after chain swap
+#### Scenario: Retarget does not change eager preset processing semantics
 
-- **GIVEN** a chain swap replaces active filter runtime objects
-- **WHEN** previous runtime resources are retired
-- **THEN** retired resources SHALL be deferred until safe destruction criteria are met
-- **AND** rendering SHALL NOT access retired chain resources after retirement begins
-- **AND** active runtime ownership SHALL remain in the filter boundary while host-side retirement ownership is temporary and limited to GPU-drain-safe destruction
+- **GIVEN** a preset has already been processed into an active runtime
+- **WHEN** a later source color-space change triggers output-format retargeting
+- **THEN** the system SHALL preserve eager preset processing behavior
+- **AND** it SHALL NOT defer preset parsing, compilation, or preset-texture preparation until first
+  use after the retarget
 
 #### Scenario: Resize handoff with boundary split
 
@@ -1699,4 +1708,3 @@ The render pipeline SHALL emit diagnostic events during per-pass frame recording
 - GIVEN a non-source texture is missing at binding time during frame recording
 - WHEN the engine substitutes the source image as a fallback
 - THEN the pipeline SHALL emit a diagnostic event with the expected resource identity, the substituted resource identity, and the pass ordinal
-

@@ -572,9 +572,32 @@ TEST_CASE("Filter chain C API lifecycle and out-param safety", "[filter_chain_c_
 
     REQUIRE(goggles_chain_control_set_value(chain, 0u, 0.5f) ==
             GOGGLES_CHAIN_STATUS_NOT_INITIALIZED);
+    REQUIRE(goggles_chain_output_retarget_vk(chain, VK_FORMAT_UNDEFINED) ==
+            GOGGLES_CHAIN_STATUS_INVALID_ARGUMENT);
+    REQUIRE(goggles_chain_output_retarget_vk(chain, VK_FORMAT_B8G8R8A8_SRGB) ==
+            GOGGLES_CHAIN_STATUS_OK);
 
     const std::string preset_path_utf8 = preset_path.string();
     REQUIRE(goggles_chain_preset_load(chain, preset_path_utf8.c_str()) == GOGGLES_CHAIN_STATUS_OK);
+
+    REQUIRE(goggles_chain_control_list_stage(chain, GOGGLES_CHAIN_STAGE_PRECHAIN, &snapshot) ==
+            GOGGLES_CHAIN_STATUS_OK);
+    const auto* filter_type =
+        find_control_descriptor(snapshot, GOGGLES_CHAIN_STAGE_PRECHAIN, "filter_type");
+    REQUIRE(filter_type != nullptr);
+    const auto filter_type_id = filter_type->control_id;
+    REQUIRE(goggles_chain_control_snapshot_destroy(&snapshot) == GOGGLES_CHAIN_STATUS_OK);
+
+    REQUIRE(goggles_chain_control_set_value(chain, filter_type_id, 2.0F) ==
+            GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(goggles_chain_output_retarget_vk(chain, VK_FORMAT_B8G8R8A8_UNORM) ==
+            GOGGLES_CHAIN_STATUS_OK);
+    REQUIRE(goggles_chain_control_list_stage(chain, GOGGLES_CHAIN_STAGE_PRECHAIN, &snapshot) ==
+            GOGGLES_CHAIN_STATUS_OK);
+    filter_type = find_control_descriptor(snapshot, GOGGLES_CHAIN_STAGE_PRECHAIN, "filter_type");
+    REQUIRE(filter_type != nullptr);
+    REQUIRE(filter_type->current_value == Catch::Approx(2.0F));
+    REQUIRE(goggles_chain_control_snapshot_destroy(&snapshot) == GOGGLES_CHAIN_STATUS_OK);
 
     REQUIRE(goggles_chain_control_list(chain, &snapshot) == GOGGLES_CHAIN_STATUS_OK);
     REQUIRE(snapshot != nullptr);
@@ -672,6 +695,9 @@ TEST_CASE("Filter chain C API validation matrix", "[filter_chain_c_api][validati
     auto invalid_ex = create_info_ex;
     invalid_ex.struct_size = sizeof(invalid_ex) - 1u;
     REQUIRE(goggles_chain_create_vk_ex(&vk_context, &invalid_ex, &runtime) ==
+            GOGGLES_CHAIN_STATUS_INVALID_ARGUMENT);
+
+    REQUIRE(goggles_chain_output_retarget_vk(nullptr, VK_FORMAT_B8G8R8A8_UNORM) ==
             GOGGLES_CHAIN_STATUS_INVALID_ARGUMENT);
 
     const std::array<char, 1> invalid_bytes{static_cast<char>(0xffu)};

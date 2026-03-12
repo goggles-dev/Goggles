@@ -51,6 +51,7 @@ public:
 
     [[nodiscard]] auto load_preset(const std::filesystem::path& preset_path) -> Result<void>;
     [[nodiscard]] auto handle_resize(vk::Extent2D new_viewport_extent) -> Result<void>;
+    [[nodiscard]] auto retarget_output(vk::Format swapchain_format) -> Result<void>;
 
     void record(vk::CommandBuffer cmd, vk::Image original_image, vk::ImageView original_view,
                 vk::Extent2D original_extent, vk::ImageView target_view,
