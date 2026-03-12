@@ -64,15 +64,10 @@ struct VulkanRuntimeFixture {
         queue_info.queueCount = 1u;
         queue_info.pQueuePriorities = &queue_priority;
 
-        VkPhysicalDeviceVulkan13Features features13{};
-        features13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-        features13.dynamicRendering = VK_TRUE;
-
         VkDeviceCreateInfo device_info{};
         device_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
         device_info.queueCreateInfoCount = 1u;
         device_info.pQueueCreateInfos = &queue_info;
-        device_info.pNext = &features13;
         if (vkCreateDevice(physical_device, &device_info, nullptr, &device) != VK_SUCCESS) {
             return;
         }
@@ -457,6 +452,18 @@ TEST_CASE("GpuTimestampPool readback stays non-blocking while the next frame rec
     pool->write_final_composition_timestamp(vk::CommandBuffer{first_frame}, 0u, false);
     REQUIRE(vkEndCommandBuffer(first_frame) == VK_SUCCESS);
 
+    VkFence first_frame_fence = VK_NULL_HANDLE;
+    VkFenceCreateInfo first_frame_fence_info{};
+    first_frame_fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    REQUIRE(vkCreateFence(fixture.device, &first_frame_fence_info, nullptr, &first_frame_fence) ==
+            VK_SUCCESS);
+
+    VkSubmitInfo first_submit_info{};
+    first_submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    first_submit_info.commandBufferCount = 1u;
+    first_submit_info.pCommandBuffers = &first_frame;
+    REQUIRE(vkQueueSubmit(fixture.queue, 1u, &first_submit_info, first_frame_fence) == VK_SUCCESS);
+
     auto pending_results = pool->read_results(0u);
     REQUIRE(pending_results);
     CHECK(pending_results->empty());
@@ -485,10 +492,14 @@ TEST_CASE("GpuTimestampPool readback stays non-blocking while the next frame rec
     REQUIRE(second_frame_results);
     CHECK_FALSE(second_frame_results->empty());
 
-    auto still_pending_results = pool->read_results(0u);
-    REQUIRE(still_pending_results);
-    CHECK(still_pending_results->empty());
+    REQUIRE(vkWaitForFences(fixture.device, 1u, &first_frame_fence, VK_TRUE, UINT64_MAX) ==
+            VK_SUCCESS);
 
+    auto first_frame_results = pool->read_results(0u);
+    REQUIRE(first_frame_results);
+    CHECK_FALSE(first_frame_results->empty());
+
+    vkDestroyFence(fixture.device, first_frame_fence, nullptr);
     vkFreeCommandBuffers(fixture.device, fixture.command_pool, 1u, &first_frame);
     vkFreeCommandBuffers(fixture.device, fixture.command_pool, 1u, &second_frame);
 }
