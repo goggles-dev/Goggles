@@ -37,6 +37,9 @@ struct VulkanRuntimeFixture {
             return;
         }
 
+        VkPhysicalDevice fallback_physical_device = VK_NULL_HANDLE;
+        uint32_t fallback_queue_family_index = UINT32_MAX;
+
         for (const auto candidate : devices) {
             uint32_t family_count = 0u;
             vkGetPhysicalDeviceQueueFamilyProperties(candidate, &family_count, nullptr);
@@ -44,14 +47,25 @@ struct VulkanRuntimeFixture {
             vkGetPhysicalDeviceQueueFamilyProperties(candidate, &family_count, families.data());
             for (uint32_t family = 0u; family < family_count; ++family) {
                 if ((families[family].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0u) {
-                    physical_device = candidate;
-                    queue_family_index = family;
-                    break;
+                    if (fallback_physical_device == VK_NULL_HANDLE) {
+                        fallback_physical_device = candidate;
+                        fallback_queue_family_index = family;
+                    }
+                    if (goggles::diagnostics::GpuTimestampPool::supports_timestamps(
+                            vk::PhysicalDevice{candidate}, family)) {
+                        physical_device = candidate;
+                        queue_family_index = family;
+                        break;
+                    }
                 }
             }
             if (physical_device != VK_NULL_HANDLE) {
                 break;
             }
+        }
+        if (physical_device == VK_NULL_HANDLE) {
+            physical_device = fallback_physical_device;
+            queue_family_index = fallback_queue_family_index;
         }
         if (physical_device == VK_NULL_HANDLE) {
             return;
@@ -464,9 +478,16 @@ TEST_CASE("GpuTimestampPool readback stays non-blocking while the next frame rec
     first_submit_info.pCommandBuffers = &first_frame;
     REQUIRE(vkQueueSubmit(fixture.queue, 1u, &first_submit_info, first_frame_fence) == VK_SUCCESS);
 
-    auto pending_results = pool->read_results(0u);
-    REQUIRE(pending_results);
-    CHECK(pending_results->empty());
+    const VkResult first_frame_status = vkGetFenceStatus(fixture.device, first_frame_fence);
+    REQUIRE((first_frame_status == VK_SUCCESS || first_frame_status == VK_NOT_READY));
+
+    auto initial_first_frame_results = pool->read_results(0u);
+    REQUIRE(initial_first_frame_results);
+    if (first_frame_status == VK_NOT_READY) {
+        CHECK(initial_first_frame_results->empty());
+    } else {
+        CHECK_FALSE(initial_first_frame_results->empty());
+    }
 
     REQUIRE(vkBeginCommandBuffer(second_frame, &begin_info) == VK_SUCCESS);
     pool->reset_frame(vk::CommandBuffer{second_frame}, 1u);
