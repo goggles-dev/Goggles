@@ -2,10 +2,10 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <goggles/filter_chain/result.hpp>
+#include <goggles_filter_chain.h>
 #include <optional>
-#include <render/chain/api/c/goggles_filter_chain.h>
 #include <string>
-#include <util/error.hpp>
 #include <vector>
 #include <vulkan/vulkan.hpp>
 

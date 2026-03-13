@@ -4,9 +4,9 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <goggles/filter_chain/result.hpp>
 #include <string>
 #include <util/diagnostics/compile_report.hpp>
-#include <util/error.hpp>
 #include <vector>
 
 namespace goggles::render {

@@ -5,8 +5,8 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <goggles/filter_chain/vulkan_context.hpp>
 #include <render/chain/chain_runtime.hpp>
-#include <render/chain/vulkan_context.hpp>
 #include <stb/stb_image_write.h>
 #include <util/diagnostics/diagnostic_policy.hpp>
 #include <vulkan/vulkan.h>

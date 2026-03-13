@@ -1,8 +1,8 @@
 #include "render/chain/chain_controls.hpp"
-#include "render/chain/filter_controls.hpp"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <goggles/filter_chain/filter_controls.hpp>
 #include <string_view>
 #include <unordered_set>
 #include <utility>

@@ -19,6 +19,7 @@ add_library(goggles_render_chain_obj OBJECT
 )
 
 target_include_directories(goggles_render_chain_obj PUBLIC
+    ${CMAKE_SOURCE_DIR}/src/render/chain/include
     ${CMAKE_SOURCE_DIR}/src/render/chain/api/c
     ${CMAKE_SOURCE_DIR}/src/render/chain/api/cpp
     ${CMAKE_SOURCE_DIR}/src
@@ -29,7 +30,7 @@ target_compile_definitions(goggles_render_chain_obj PRIVATE
     GOGGLES_LOG_TAG="render.chain"
 )
 
-target_link_libraries(goggles_render_chain_obj PUBLIC
+target_link_libraries(goggles_render_chain_obj PRIVATE
     goggles_util
     goggles_diagnostics
     Vulkan::Vulkan
@@ -37,7 +38,7 @@ target_link_libraries(goggles_render_chain_obj PUBLIC
     stb_image
 )
 
-target_compile_definitions(goggles_render_chain_obj PUBLIC
+target_compile_definitions(goggles_render_chain_obj PRIVATE
     VULKAN_HPP_NO_EXCEPTIONS
     VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
 )

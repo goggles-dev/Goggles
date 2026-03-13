@@ -2,7 +2,6 @@
 #include "render/backend/filter_chain_controller.hpp"
 #include "render/backend/render_output.hpp"
 #include "render/backend/vulkan_context.hpp"
-#include "render/chain/vulkan_context.hpp"
 
 #include <algorithm>
 #include <array>
@@ -10,6 +9,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <goggles/filter_chain/vulkan_context.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -128,9 +128,12 @@ TEST_CASE("Vulkan backend dependency edge audits stay explicit", "[vulkan-backen
     REQUIRE(find_text(*importer_cpp_text, "prepare_wait_semaphore") != std::string::npos);
     REQUIRE(find_text(*importer_cpp_text, "retire_wait_semaphore") != std::string::npos);
     REQUIRE(find_text(*importer_cpp_text, "clear_current_source()") != std::string::npos);
-    REQUIRE(find_text(*controller_text, "render/chain/vulkan_context.hpp") != std::string::npos);
+    REQUIRE(find_text(*controller_text, "goggles/filter_chain/vulkan_context.hpp") !=
+            std::string::npos);
+    REQUIRE(find_text(*controller_text, "render/chain/vulkan_context.hpp") == std::string::npos);
     REQUIRE(find_text(*controller_text, "struct OutputTarget") != std::string::npos);
     REQUIRE(find_text(*controller_text, "retarget_filter_chain") != std::string::npos);
+    REQUIRE(find_text(*controller_text, "filter_chain_runtime()") == std::string::npos);
     REQUIRE(find_text(*controller_text, "render_output.hpp") == std::string::npos);
     REQUIRE(find_text(*controller_text, "external_frame_importer.hpp") == std::string::npos);
     REQUIRE(find_text(*backend_header_text, "m_gpu_selector") == std::string::npos);

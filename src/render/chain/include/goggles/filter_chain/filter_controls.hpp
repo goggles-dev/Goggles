@@ -11,7 +11,6 @@ using FilterControlId = std::uint64_t;
 
 enum class FilterControlStage : std::uint8_t { prechain, effect };
 
-/// @brief Boundary-safe shader control descriptor used by backend/app/UI.
 struct FilterControlDescriptor {
     FilterControlId control_id = 0;
     FilterControlStage stage = FilterControlStage::effect;

@@ -1,11 +1,11 @@
 #pragma once
 
 #include <cstdint>
+#include <goggles/filter_chain/error.hpp>
 #include <optional>
 #include <slang-com-ptr.h>
 #include <slang.h>
 #include <string>
-#include <util/error.hpp>
 #include <vector>
 #include <vulkan/vulkan.hpp>
 

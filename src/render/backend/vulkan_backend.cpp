@@ -336,7 +336,7 @@ auto VulkanBackend::record_render_commands(vk::CommandBuffer cmd, uint32_t image
 
     const auto integer_scale = resolve_record_integer_scale(
         m_scale_mode, m_integer_scale, imported_source.extent, m_render_output.target_extent());
-    GOGGLES_TRY(m_filter_chain_controller.filter_chain_runtime().record(ChainRecordInfo{
+    GOGGLES_TRY(m_filter_chain_controller.record(ChainRecordInfo{
         .command_buffer = cmd,
         .source_image = imported_source.image,
         .source_view = imported_source.view,
@@ -484,7 +484,7 @@ auto VulkanBackend::render(const util::ExternalImageFrame* frame,
             const auto integer_scale =
                 resolve_record_integer_scale(m_scale_mode, m_integer_scale, imported_source.extent,
                                              m_render_output.target_extent());
-            GOGGLES_TRY(m_filter_chain_controller.filter_chain_runtime().record(ChainRecordInfo{
+            GOGGLES_TRY(m_filter_chain_controller.record(ChainRecordInfo{
                 .command_buffer = cmd,
                 .source_image = imported_source.image,
                 .source_view = imported_source.view,

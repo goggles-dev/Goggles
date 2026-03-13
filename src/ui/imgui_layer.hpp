@@ -3,8 +3,8 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <goggles/filter_chain/filter_controls.hpp>
 #include <map>
-#include <render/chain/filter_controls.hpp>
 #include <string>
 #include <util/config.hpp>
 #include <util/error.hpp>

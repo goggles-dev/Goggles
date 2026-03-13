@@ -559,6 +559,14 @@ auto FilterChainController::handle_resize(vk::Extent2D target_extent) -> Result<
     return filter_chain.handle_resize(target_extent);
 }
 
+auto FilterChainController::record(const ChainRecordInfo& record_info) -> Result<void> {
+    if (!filter_chain) {
+        return make_error<void>(ErrorCode::vulkan_init_failed, "Filter chain not initialized");
+    }
+
+    return filter_chain.record(record_info);
+}
+
 auto FilterChainController::current_prechain_resolution() const -> vk::Extent2D {
     if (filter_chain) {
         auto resolution_result = filter_chain.get_prechain_resolution();

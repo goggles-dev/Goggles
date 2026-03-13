@@ -1,16 +1,15 @@
 #pragma once
 
-#include "goggles_filter_chain.hpp"
-
 #include <array>
 #include <atomic>
 #include <filesystem>
 #include <functional>
 #include <future>
-#include <render/chain/filter_controls.hpp>
-#include <render/chain/vulkan_context.hpp>
+#include <goggles/filter_chain/filter_controls.hpp>
+#include <goggles/filter_chain/result.hpp>
+#include <goggles/filter_chain/vulkan_context.hpp>
+#include <goggles_filter_chain.hpp>
 #include <util/config.hpp>
-#include <util/error.hpp>
 #include <vector>
 #include <vulkan/vulkan.hpp>
 
@@ -74,13 +73,13 @@ struct FilterChainController {
     void set_stage_policy(const ChainStagePolicy& policy);
     void set_prechain_resolution(const PrechainResolutionConfig& config);
     [[nodiscard]] auto handle_resize(vk::Extent2D target_extent) -> Result<void>;
+    [[nodiscard]] auto record(const ChainRecordInfo& record_info) -> Result<void>;
 
     [[nodiscard]] auto current_prechain_resolution() const -> vk::Extent2D;
     [[nodiscard]] auto current_preset_path() const -> const std::filesystem::path& {
         return preset_path;
     }
     [[nodiscard]] auto has_filter_chain() const -> bool { return static_cast<bool>(filter_chain); }
-    [[nodiscard]] auto filter_chain_runtime() -> FilterChainRuntime& { return filter_chain; }
     [[nodiscard]] auto consume_chain_swapped() -> bool {
         return chain_swapped.exchange(false, std::memory_order_acq_rel);
     }

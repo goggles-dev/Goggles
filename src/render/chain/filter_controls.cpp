@@ -1,6 +1,5 @@
-#include "filter_controls.hpp"
-
 #include <algorithm>
+#include <goggles/filter_chain/filter_controls.hpp>
 
 namespace goggles::render {
 

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <filesystem>
-#include <util/error.hpp>
+#include <goggles/filter_chain/error.hpp>
 #include <vulkan/vulkan.hpp>
 
 namespace goggles::render {

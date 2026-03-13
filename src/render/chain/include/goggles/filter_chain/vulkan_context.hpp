@@ -5,7 +5,6 @@
 
 namespace goggles::render {
 
-/// @brief Vulkan objects shared by render passes.
 struct VulkanContext {
     vk::Device device;
     vk::PhysicalDevice physical_device;

@@ -225,7 +225,7 @@ void require_controller_state(goggles::render::backend_internal::FilterChainCont
     REQUIRE(controller.current_preset_path() == preset_path);
     REQUIRE(controller.current_prechain_resolution() == vk::Extent2D{2u, 3u});
 
-    const auto policy_result = controller.filter_chain_runtime().get_stage_policy();
+    const auto policy_result = controller.filter_chain.get_stage_policy();
     REQUIRE(policy_result.has_value());
     REQUIRE(policy_result->prechain_enabled);
     REQUIRE(!policy_result->effect_stage_enabled);

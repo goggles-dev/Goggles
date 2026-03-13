@@ -9,6 +9,9 @@
 #include <string>
 #include <utility>
 
+#ifndef GOGGLES_ERROR_TYPES_DEFINED
+#define GOGGLES_ERROR_TYPES_DEFINED
+
 namespace goggles {
 
 /// @brief Error codes used by `goggles::Error`.
@@ -101,7 +104,12 @@ make_result_ptr_error(ErrorCode code, std::string message,
 
 } // namespace goggles
 
+#endif // GOGGLES_ERROR_TYPES_DEFINED
+
 // NOLINTBEGIN(cppcoreguidelines-macro-usage)
+
+#ifndef GOGGLES_ERROR_MACROS_DEFINED
+#define GOGGLES_ERROR_MACROS_DEFINED
 
 /// @brief Propagates an error or returns the contained value (expression-style).
 ///
@@ -148,5 +156,7 @@ make_result_ptr_error(ErrorCode code, std::string message,
             std::abort();                                                                          \
         }                                                                                          \
     } while (false)
+
+#endif // GOGGLES_ERROR_MACROS_DEFINED
 
 // NOLINTEND(cppcoreguidelines-macro-usage)

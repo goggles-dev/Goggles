@@ -9,6 +9,7 @@ target_include_directories(goggles_ui PUBLIC
 
 target_link_libraries(goggles_ui PUBLIC
     goggles_util
+    goggles-filter-chain
     imgui
     Vulkan::Vulkan
     SDL3::SDL3
