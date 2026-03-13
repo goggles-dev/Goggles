@@ -11,10 +11,12 @@
 #include "vulkan_context.hpp"
 
 #include <atomic>
+#include <goggles/filter_chain/diagnostics/diagnostic_session.hpp>
 #include <memory>
 #include <render/texture/texture_loader.hpp>
+#include <string>
 #include <unordered_map>
-#include <util/diagnostics/diagnostic_session.hpp>
+#include <unordered_set>
 #include <vector>
 
 namespace goggles::render {
@@ -116,6 +118,8 @@ public:
     std::unordered_map<std::string, size_t> m_alias_to_pass_index;
     std::unordered_map<size_t, std::unique_ptr<Framebuffer>> m_feedback_framebuffers;
     std::unordered_map<size_t, bool> m_feedback_initialized;
+    std::unordered_set<std::string> m_recorded_semantic_keys;
+    std::unordered_map<std::string, std::string> m_recorded_binding_states;
     uint64_t m_generation_id = 0;
 
     ScaleMode m_last_scale_mode = ScaleMode::stretch;

@@ -5,9 +5,8 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <goggles/filter_chain/scale_mode.hpp>
 #include <render/shader/retroarch_preprocessor.hpp>
-#include <util/config.hpp>
-#include <util/error.hpp>
 #include <vulkan/vulkan.hpp>
 
 namespace goggles::render {

@@ -59,6 +59,11 @@ description = "Run local filter-chain ABI smoke matrix"
 cmd = "bash scripts/task/smoke-filter-chain.sh"
 depends-on = ["_check-init"]
 
+[tasks.rehearse-filter-chain-provider]
+description = "Rehearse in-tree and package provider modes"
+cmd = "bash scripts/task/rehearse-filter-chain-provider.sh"
+depends-on = ["_check-init"]
+
 [tasks.start]
 description = "Launch app inside compositor + viewer"
 cmd = "bash scripts/task/start.sh"

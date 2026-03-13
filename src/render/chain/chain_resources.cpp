@@ -4,8 +4,8 @@
 
 #include <cmath>
 #include <format>
+#include <goggles/filter_chain/diagnostics/diagnostic_event.hpp>
 #include <unordered_set>
-#include <util/diagnostics/diagnostic_event.hpp>
 #include <util/logging.hpp>
 #include <util/profiling.hpp>
 
@@ -126,6 +126,8 @@ void ChainResources::install(CompiledChain&& compiled, diagnostics::DiagnosticSe
     m_required_history_depth = compiled.required_history_depth;
     m_feedback_framebuffers.clear();
     m_feedback_initialized.clear();
+    m_recorded_semantic_keys.clear();
+    m_recorded_binding_states.clear();
     for (auto pass_idx : compiled.feedback_pass_indices) {
         m_feedback_framebuffers.try_emplace(pass_idx);
         m_feedback_initialized.try_emplace(pass_idx, false);
@@ -160,6 +162,8 @@ void ChainResources::shutdown() {
     m_framebuffers.clear();
     m_feedback_framebuffers.clear();
     m_feedback_initialized.clear();
+    m_recorded_semantic_keys.clear();
+    m_recorded_binding_states.clear();
     cleanup_texture_registry();
     m_alias_to_pass_index.clear();
     m_frame_history.shutdown();

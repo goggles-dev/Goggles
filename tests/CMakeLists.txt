@@ -8,11 +8,18 @@
 # Note: Test data files are copied to build/tests/util/test_data/ and tests
 # expect to run from that directory to find test data files.
 
-# Test executable
-add_executable(goggles_tests)
+set(GOGGLES_FILTER_CHAIN_CONTRACT_TEST_SOURCES
+    render/test_shader_runtime.cpp
+    render/test_retroarch_preprocessor.cpp
+    render/test_preset_parser.cpp
+    render/test_slang_reflect.cpp
+    render/test_filter_chain.cpp
+    render/test_filter_controls.cpp
+    render/test_filter_chain_c_api_contracts.cpp
+    render/test_filter_chain_retarget_contract.cpp
+)
 
-# Test sources - mirrors src/ structure
-target_sources(goggles_tests PRIVATE
+set(GOGGLES_HOST_TEST_SOURCES
     # App module tests
     app/test_cli.cpp
     ${CMAKE_SOURCE_DIR}/src/app/cli.cpp
@@ -28,16 +35,8 @@ target_sources(goggles_tests PRIVATE
     util/test_paths.cpp
 
     # Render module tests
-    render/test_shader_runtime.cpp
-    render/test_retroarch_preprocessor.cpp
-    render/test_preset_parser.cpp
-    render/test_slang_reflect.cpp
     render/test_semantic_binder.cpp
     render/test_zfast_integration.cpp
-    render/test_filter_chain.cpp
-    render/test_filter_controls.cpp
-    render/test_filter_chain_c_api_contracts.cpp
-    render/test_filter_chain_retarget.cpp
     render/test_filter_boundary_contracts.cpp
     render/test_vulkan_backend_subsystem_contracts.cpp
     render/test_shader_validation.cpp
@@ -61,10 +60,43 @@ target_sources(goggles_tests PRIVATE
     # pipeline/graph/test_pipeline_graph.cpp
 )
 
+set(GOGGLES_FILTER_CHAIN_TEST_TARGET goggles-filter-chain)
+set(GOGGLES_FILTER_CHAIN_TEST_INCLUDE_DIRS)
+
+if(GOGGLES_FILTER_CHAIN_PROVIDER STREQUAL "package")
+    foreach(prefix_dir IN LISTS CMAKE_PREFIX_PATH)
+        list(APPEND GOGGLES_FILTER_CHAIN_TEST_INCLUDE_DIRS "${prefix_dir}/include")
+    endforeach()
+else()
+    list(APPEND GOGGLES_FILTER_CHAIN_TEST_INCLUDE_DIRS
+        ${CMAKE_SOURCE_DIR}/src/render/chain/include
+        ${CMAKE_SOURCE_DIR}/src/render/chain/api/c
+        ${CMAKE_SOURCE_DIR}/src/render/chain/api/cpp
+    )
+endif()
+
+# Test executables
+add_executable(goggles_tests)
+
+target_sources(goggles_tests PRIVATE ${GOGGLES_HOST_TEST_SOURCES})
+
+if(NOT GOGGLES_FILTER_CHAIN_PROVIDER STREQUAL "package")
+    add_executable(goggles_filter_chain_contract_tests)
+    target_sources(goggles_filter_chain_contract_tests PRIVATE
+        ${GOGGLES_FILTER_CHAIN_CONTRACT_TEST_SOURCES})
+endif()
+
 # Include directories for accessing project headers
 target_include_directories(goggles_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src
 )
+
+if(TARGET goggles_filter_chain_contract_tests)
+    target_include_directories(goggles_filter_chain_contract_tests PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${GOGGLES_FILTER_CHAIN_TEST_INCLUDE_DIRS}
+    )
+endif()
 
 # Link against project libraries
 target_link_libraries(goggles_tests PRIVATE
@@ -74,15 +106,34 @@ target_link_libraries(goggles_tests PRIVATE
     Catch2::Catch2WithMain
 )
 
+if(TARGET goggles_filter_chain_contract_tests)
+    target_link_libraries(goggles_filter_chain_contract_tests PRIVATE
+        ${GOGGLES_FILTER_CHAIN_TEST_TARGET}
+        Catch2::Catch2WithMain
+    )
+endif()
+
 # Compiler settings (inherit from main project)
 target_compile_features(goggles_tests PRIVATE cxx_std_20)
+if(TARGET goggles_filter_chain_contract_tests)
+    target_compile_features(goggles_filter_chain_contract_tests PRIVATE cxx_std_20)
+endif()
 
 # Define source directory for test asset paths
 target_compile_definitions(goggles_tests PRIVATE
     GOGGLES_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
 )
 
+if(TARGET goggles_filter_chain_contract_tests)
+    target_compile_definitions(goggles_filter_chain_contract_tests PRIVATE
+        GOGGLES_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    )
+endif()
+
 goggles_enable_sanitizers(goggles_tests)
+if(TARGET goggles_filter_chain_contract_tests)
+    goggles_enable_sanitizers(goggles_filter_chain_contract_tests)
+endif()
 
 # Copy test data files to build directory
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/util/test_data/
@@ -90,6 +141,9 @@ file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/util/test_data/
 
 # Register test with CTest
 add_test(NAME goggles_unit_tests COMMAND goggles_tests)
+if(TARGET goggles_filter_chain_contract_tests)
+    add_test(NAME goggles_filter_chain_contract_tests COMMAND goggles_filter_chain_contract_tests)
+endif()
 
 add_executable(goggles_shader_batch_report render/shader_batch_report_main.cpp render/shader_batch_report.cpp)
 target_include_directories(goggles_shader_batch_report PRIVATE
@@ -110,12 +164,25 @@ goggles_enable_sanitizers(goggles_shader_batch_report)
 # This allows both CTest execution and individual test executable debugging
 set_property(TEST goggles_unit_tests 
     PROPERTY WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+if(TARGET goggles_filter_chain_contract_tests)
+    set_property(TEST goggles_filter_chain_contract_tests
+        PROPERTY WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+endif()
 
 # Some Vulkan-backed Catch2 cases exercise loader/driver paths that trigger external
 # LeakSanitizer noise under the ASAN preset. Match the existing GPU/integration test
 # convention so these tests can still provide executable evidence in ASAN lanes.
 set_property(TEST goggles_unit_tests
     PROPERTY ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0")
+if(TARGET goggles_filter_chain_contract_tests)
+    set_property(TEST goggles_filter_chain_contract_tests
+        PROPERTY ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0")
+endif()
+set_property(TEST goggles_unit_tests PROPERTY LABELS "host-integration")
+if(TARGET goggles_filter_chain_contract_tests)
+    set_property(TEST goggles_filter_chain_contract_tests
+        PROPERTY LABELS "filter-chain-contract")
+endif()
 
 # Discover Catch2 tests for individual reporting (optional, fallback to simple registration)
 # Note: catch_discover_tests may not be available in all Catch2 versions
@@ -126,6 +193,9 @@ if(TARGET Catch2::Catch2)
     if(CATCH_CMAKE_MODULE)
         include("${CATCH_CMAKE_MODULE}")
         catch_discover_tests(goggles_tests)
+        if(TARGET goggles_filter_chain_contract_tests)
+            catch_discover_tests(goggles_filter_chain_contract_tests)
+        endif()
     endif()
 endif()
 

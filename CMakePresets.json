@@ -205,6 +205,45 @@
         "CMAKE_C_COMPILER": "$env{GCC}",
         "CMAKE_CXX_COMPILER": "$env{GXX}"
       }
+    },
+    {
+      "name": "smoke-provider-in-tree",
+      "displayName": "Provider rehearsal (in-tree)",
+      "description": "Smoke rehearsal of in-tree filter-chain provider consumption",
+      "inherits": [
+        ".debug",
+        ".test"
+      ],
+      "cacheVariables": {
+        "GOGGLES_FILTER_CHAIN_PROVIDER": "in-tree"
+      }
+    },
+    {
+      "name": "smoke-provider-package-stage",
+      "displayName": "Provider rehearsal package stage",
+      "description": "Build and install the filter-chain package for provider rehearsal",
+      "inherits": [
+        ".debug",
+        ".test"
+      ],
+      "cacheVariables": {
+        "GOGGLES_FILTER_CHAIN_PROVIDER": "in-tree",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/smoke-provider-package-root"
+      }
+    },
+    {
+      "name": "smoke-provider-package-consumer",
+      "displayName": "Provider rehearsal (package consumer)",
+      "description": "Consume goggles-filter-chain through the installed package bridge",
+      "inherits": [
+        ".debug",
+        ".test"
+      ],
+      "cacheVariables": {
+        "GOGGLES_FILTER_CHAIN_PROVIDER": "package",
+        "GOGGLES_FILTER_CHAIN_PACKAGE": "goggles-filter-chain",
+        "CMAKE_PREFIX_PATH": "${sourceDir}/build/smoke-provider-package-root"
+      }
     }
   ],
   "buildPresets": [
@@ -259,6 +298,18 @@
     {
       "name": "smoke-shared-gcc",
       "configurePreset": "smoke-shared-gcc"
+    },
+    {
+      "name": "smoke-provider-in-tree",
+      "configurePreset": "smoke-provider-in-tree"
+    },
+    {
+      "name": "smoke-provider-package-stage",
+      "configurePreset": "smoke-provider-package-stage"
+    },
+    {
+      "name": "smoke-provider-package-consumer",
+      "configurePreset": "smoke-provider-package-consumer"
     }
   ],
   "testPresets": [
@@ -279,6 +330,30 @@
       "displayName": "ASAN Test Execution",
       "description": "Test execution with AddressSanitizer",
       "configurePreset": "asan",
+      "output": {
+        "verbosity": "verbose"
+      },
+      "execution": {
+        "jobs": 0
+      }
+    },
+    {
+      "name": "smoke-provider-in-tree",
+      "displayName": "Provider rehearsal test execution (in-tree)",
+      "description": "Run contract and host tests against the in-tree provider path",
+      "configurePreset": "smoke-provider-in-tree",
+      "output": {
+        "verbosity": "verbose"
+      },
+      "execution": {
+        "jobs": 0
+      }
+    },
+    {
+      "name": "smoke-provider-package-consumer",
+      "displayName": "Provider rehearsal test execution (package)",
+      "description": "Run contract and host tests against the package provider path",
+      "configurePreset": "smoke-provider-package-consumer",
       "output": {
         "verbosity": "verbose"
       },

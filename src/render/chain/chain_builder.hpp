@@ -4,12 +4,12 @@
 #include "frame_history.hpp"
 #include "preset_parser.hpp"
 
+#include <goggles/filter_chain/diagnostics/compile_report.hpp>
+#include <goggles/filter_chain/diagnostics/diagnostic_session.hpp>
 #include <memory>
 #include <render/texture/texture_loader.hpp>
 #include <unordered_map>
 #include <unordered_set>
-#include <util/diagnostics/compile_report.hpp>
-#include <util/diagnostics/diagnostic_session.hpp>
 #include <vector>
 
 namespace goggles::render {

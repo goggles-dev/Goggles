@@ -8,12 +8,12 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <goggles/filter_chain/diagnostics/diagnostic_policy.hpp>
+#include <goggles/filter_chain/diagnostics/diagnostic_session.hpp>
+#include <goggles/filter_chain/diagnostics/gpu_timestamp_pool.hpp>
+#include <goggles/filter_chain/result.hpp>
+#include <goggles/filter_chain/scale_mode.hpp>
 #include <memory>
-#include <util/config.hpp>
-#include <util/diagnostics/diagnostic_policy.hpp>
-#include <util/diagnostics/diagnostic_session.hpp>
-#include <util/diagnostics/gpu_timestamp_pool.hpp>
-#include <util/error.hpp>
 #include <vector>
 #include <vulkan/vulkan.hpp>
 

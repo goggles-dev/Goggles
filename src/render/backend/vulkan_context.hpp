@@ -3,10 +3,10 @@
 #include "vulkan_debug.hpp"
 
 #include <cstdint>
+#include <goggles/filter_chain/result.hpp>
+#include <goggles/filter_chain/vulkan_context.hpp>
 #include <optional>
-#include <render/chain/vulkan_context.hpp>
 #include <string>
-#include <util/error.hpp>
 #include <vulkan/vulkan.hpp>
 
 struct SDL_Window;

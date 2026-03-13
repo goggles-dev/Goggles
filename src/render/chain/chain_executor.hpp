@@ -2,8 +2,8 @@
 
 #include "chain_resources.hpp"
 
-#include <util/diagnostics/diagnostic_session.hpp>
-#include <util/diagnostics/gpu_timestamp_pool.hpp>
+#include <goggles/filter_chain/diagnostics/diagnostic_session.hpp>
+#include <goggles/filter_chain/diagnostics/gpu_timestamp_pool.hpp>
 #include <vulkan/vulkan.hpp>
 
 namespace goggles::render {

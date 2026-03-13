@@ -1,0 +1,44 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+find_dependency(Vulkan REQUIRED)
+find_dependency(spdlog REQUIRED)
+find_dependency(slang REQUIRED CONFIG)
+
+if(NOT TARGET stb_image)
+    if(NOT DEFINED ENV{CONDA_PREFIX})
+        message(FATAL_ERROR "CONDA_PREFIX must be set to consume goggles-filter-chain")
+    endif()
+    add_library(stb_image INTERFACE IMPORTED)
+    set_target_properties(stb_image PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "$ENV{CONDA_PREFIX}/include/stb"
+    )
+endif()
+
+find_library(GOGGLES_FILTER_CHAIN_LIBRARY
+    NAMES goggles-filter-chain
+    PATHS "${PACKAGE_PREFIX_DIR}/lib"
+    NO_DEFAULT_PATH
+    REQUIRED)
+
+if(NOT TARGET GogglesFilterChain::goggles-filter-chain)
+    add_library(GogglesFilterChain::goggles-filter-chain UNKNOWN IMPORTED)
+    set_target_properties(GogglesFilterChain::goggles-filter-chain PROPERTIES
+        IMPORTED_LOCATION "${GOGGLES_FILTER_CHAIN_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${PACKAGE_PREFIX_DIR}/include"
+        INTERFACE_COMPILE_DEFINITIONS "VULKAN_HPP_NO_EXCEPTIONS;VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1@GOGGLES_FILTER_CHAIN_SHARED_DEFINE@"
+        INTERFACE_LINK_LIBRARIES "Vulkan::Vulkan;spdlog::spdlog;slang::slang;stb_image"
+    )
+endif()
+
+if(NOT TARGET goggles-filter-chain)
+    add_library(goggles-filter-chain INTERFACE IMPORTED)
+    set_target_properties(goggles-filter-chain PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${PACKAGE_PREFIX_DIR}/include"
+        INTERFACE_COMPILE_DEFINITIONS "VULKAN_HPP_NO_EXCEPTIONS;VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1@GOGGLES_FILTER_CHAIN_SHARED_DEFINE@"
+        INTERFACE_LINK_LIBRARIES "GogglesFilterChain::goggles-filter-chain"
+    )
+endif()
+
+check_required_components("@GOGGLES_FILTER_CHAIN_PACKAGE@")

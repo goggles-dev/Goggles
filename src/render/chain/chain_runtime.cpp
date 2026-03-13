@@ -5,8 +5,8 @@
 
 #include <algorithm>
 #include <cstring>
+#include <goggles/filter_chain/diagnostics/log_sink.hpp>
 #include <render/shader/shader_runtime.hpp>
-#include <util/diagnostics/log_sink.hpp>
 #include <util/logging.hpp>
 #include <util/profiling.hpp>
 

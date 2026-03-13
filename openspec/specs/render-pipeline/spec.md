@@ -53,23 +53,24 @@ The blit pipeline SHALL sample imported textures using a Vulkan sampler with lin
 
 The render backend SHALL match swapchain output color space to the current source image
 color-space classification to preserve pixel values. When the source classification changes without
-a preset change request, the pipeline SHALL retarget only swapchain-bound output resources needed
-for the new output format and SHALL NOT treat the event as a full preset reload.
+an explicit preset change request, the pipeline SHALL recreate backend-owned swapchain and
+presentation resources, SHALL retarget the filter runtime through the output-retarget seam, and
+SHALL preserve source-independent preset-derived state instead of forcing a full preset reload.
 
-#### Scenario: Source color-space change retargets output side
+#### Scenario: Source color-space change uses retarget seam
 
-- **GIVEN** a preset is already active and rendering with an SRGB-matched output path
-- **WHEN** the source image classification changes to UNORM
-- **THEN** the swapchain SHALL be recreated with a matching UNORM output format
-- **AND** the output-side runtime resources bound to swapchain presentation SHALL be retargeted for
-  the new format
+- GIVEN a preset is already active and rendering with an SRGB-matched output path
+- WHEN the source image classification changes to UNORM
+- THEN the backend SHALL recreate the swapchain with a matching UNORM output format
+- AND the filter runtime SHALL be retargeted through the output-retarget seam rather than by
+  reloading the preset
 
-#### Scenario: Output retarget preserves active preset state
+#### Scenario: Successful retarget preserves preset-derived state
 
-- **GIVEN** a source color-space change triggers output-format retargeting
-- **WHEN** the retarget succeeds
-- **THEN** the active preset selection SHALL remain unchanged
-- **AND** existing parameter overrides and control layout SHALL remain unchanged
+- GIVEN a source color-space change triggers output-format retargeting
+- WHEN the retarget succeeds
+- THEN the active preset selection, control layout, and parameter overrides SHALL remain unchanged
+- AND source-independent preset-derived runtime work SHALL remain available after the transition
 
 ### Requirement: Pipeline Extensibility
 
@@ -1579,32 +1580,25 @@ In headless mode, frame submission SHALL queue render commands and wait on a fen
 
 ### Requirement: Async Filter Lifecycle Safety
 
-The render pipeline SHALL preserve async preset reload, output-format retarget, chain swap, and
-resize safety behavior after introducing the `goggles-filter-chain` boundary.
+The render pipeline SHALL preserve async preset reload, output-format retarget, pending-runtime
+swap, and resize safety while Goggles consumes the filter runtime through the stable boundary.
+Backend-owned swapchain and present lifecycle SHALL remain separate from boundary-owned output-state
+rebuild behavior.
 
-#### Scenario: Output retarget completion is observable only after activation
+#### Scenario: Pending reload is aligned before swap
 
-- **GIVEN** an output-format retarget is performed asynchronously
-- **WHEN** the retargeted runtime becomes active for rendering
-- **THEN** swap-complete notification SHALL be observable only after the retargeted runtime is active
-- **AND** consumers SHALL observe the retargeted output path as current state
+- GIVEN an explicit preset reload is building a pending runtime
+- AND the authoritative output target changes before that runtime becomes active
+- WHEN the pending runtime is prepared for swap
+- THEN the pending runtime SHALL be retargeted to the latest output target before activation
+- AND the system SHALL NOT swap in a runtime bound to stale output state and immediately retarget it
 
 #### Scenario: Output retarget failure keeps prior runtime active
 
-- **GIVEN** an output-format retarget attempt fails before activation
-- **WHEN** host code checks active runtime state and swap-complete state
-- **THEN** the previously active runtime SHALL remain the active rendering runtime
-- **AND** no swap-complete indication SHALL be emitted for the failed retarget
-
-#### Scenario: Pending reload is retargeted before swap
-
-- **GIVEN** an explicit preset reload is building a pending runtime
-- **AND** the authoritative source color-space classification changes before that runtime becomes
-  active
-- **WHEN** the pending runtime is prepared for swap
-- **THEN** the pending runtime SHALL be retargeted to the latest output format before activation
-- **AND** the system SHALL NOT swap in a runtime bound to stale output format and immediately retarget
-  it afterward
+- GIVEN an output-format retarget attempt fails before activation
+- WHEN host code checks active runtime state after the failure
+- THEN the previously active runtime SHALL remain the active rendering runtime
+- AND the failed attempt SHALL NOT force fallback to full preset reload behavior
 
 #### Scenario: Retarget does not change eager preset processing semantics
 

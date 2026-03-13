@@ -1,7 +1,8 @@
 # filter-chain-c-api Specification
 
 ## Purpose
-TBD - created by archiving change filter-chain-c-api-v1. Update Purpose after archive.
+Define the stable `goggles-filter-chain` C ABI contract for runtime lifecycle, host/boundary
+ownership, output retargeting, and diagnostics-safe consumer integration.
 ## Requirements
 ### Requirement: Public Header and Export Surface
 The filter-chain C API MUST be defined in a single public header named `include/goggles_filter_chain.h`. All public types and functions in ABI v1 MUST use the `goggles_chain_` prefix, all exported functions MUST use `GOGGLES_CHAIN_CALL`, and all symbols declared in the v1 header MUST be exported when `goggles_chain_abi_version()` returns `GOGGLES_CHAIN_ABI_VERSION`.
@@ -83,6 +84,46 @@ The API MUST provide both C-string and length-based variants for create and pres
 - **WHEN** the host calls `goggles_chain_record_vk(...)` with `frame_index = 2`
 - **THEN** the function returns `GOGGLES_CHAIN_STATUS_INVALID_ARGUMENT` and records no commands
 
+### Requirement: Post-Retarget Output Contract
+
+The C ABI SHALL expose output-target retarget behavior as a contract distinct from preset load and
+explicit preset reload. A successful retarget for an unchanged preset SHALL preserve active preset
+identity, control state, and other source-independent runtime state while rebuilding only output-side
+boundary state required for the new host-owned target.
+
+#### Scenario: Retarget preserves source-independent runtime state
+- GIVEN a runtime has already completed preset load and is in READY state
+- WHEN the host requests output-target retargeting for a format-only change through the C boundary
+- THEN the C ABI contract SHALL preserve active preset identity and existing control state on success
+- AND the host SHALL NOT need to reload the preset to adopt the new output target
+
+#### Scenario: Explicit preset reload remains a separate rebuild path
+- GIVEN a host explicitly requests preset reload through the C boundary
+- WHEN the request is processed
+- THEN the contract SHALL treat that request as full preset/runtime rebuild behavior
+- AND the host SHALL NOT infer reload semantics from format-only retarget behavior
+
+### Requirement: C ABI Public Surface Isolation
+
+The public C ABI header MUST remain consumable by Goggles through boundary-owned C types and allowed
+third-party headers only. Public ABI declarations MUST NOT expose Goggles-internal config headers,
+Goggles-only utility headers, or backend-private helper types.
+
+#### Scenario: Public header excludes Goggles-only support dependencies
+- GIVEN a consumer includes `goggles_filter_chain.h`
+- WHEN header dependencies are audited
+- THEN the header SHALL provide its public declarations without requiring Goggles config headers or
+  Goggles-only utility headers
+- AND the consumer SHALL not need backend-private helper headers to compile against the C ABI
+
+#### Scenario: Ownership split stays explicit at the C boundary
+- GIVEN a host uses the C ABI to coordinate rendering and output retargeting
+- WHEN ownership responsibilities are validated at the boundary
+- THEN host-owned swapchain, presentation, and record-time Vulkan handles SHALL remain host
+  responsibilities
+- AND runtime-owned persistent state plus output-state retarget behavior SHALL remain boundary
+  responsibilities
+
 ### Requirement: Stage Model and Policy Contract
 The v1 stage model MUST include `prechain`, `effect`, and `postchain` as first-class stage values and masks. `goggles_chain_stage_policy_set(...)` MUST reject unknown stage bits and zero mask with `GOGGLES_CHAIN_STATUS_INVALID_ARGUMENT`. Runtime execution order MUST remain `prechain -> effect -> postchain`.
 
@@ -138,4 +179,3 @@ Across v1.x, patch releases MUST avoid source/ABI breaking changes and minor rel
 - **GIVEN** a host compiled against v1.0 header
 - **WHEN** it links against a v1.x minor release
 - **THEN** existing v1.0 symbols and contracts continue to work without source-breaking changes
-

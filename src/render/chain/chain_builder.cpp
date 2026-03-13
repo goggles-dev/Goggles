@@ -5,11 +5,11 @@
 #include <charconv>
 #include <cstdint>
 #include <functional>
+#include <goggles/filter_chain/diagnostics/compile_report.hpp>
+#include <goggles/filter_chain/diagnostics/source_provenance.hpp>
 #include <render/shader/retroarch_preprocessor.hpp>
 #include <sstream>
 #include <unordered_set>
-#include <util/diagnostics/compile_report.hpp>
-#include <util/diagnostics/source_provenance.hpp>
 #include <util/logging.hpp>
 #include <util/profiling.hpp>
 

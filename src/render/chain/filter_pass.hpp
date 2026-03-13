@@ -5,10 +5,10 @@
 #include "semantic_binder.hpp"
 
 #include <array>
+#include <goggles/filter_chain/diagnostics/compile_report.hpp>
 #include <render/shader/retroarch_preprocessor.hpp>
 #include <render/shader/slang_reflect.hpp>
 #include <unordered_map>
-#include <util/diagnostics/compile_report.hpp>
 #include <vector>
 
 namespace goggles::render {

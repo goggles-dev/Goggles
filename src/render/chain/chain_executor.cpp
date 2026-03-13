@@ -90,6 +90,22 @@ auto semantic_classification_name(diagnostics::SemanticClassification classifica
     }
 }
 
+auto semantic_record_key(uint32_t pass_ordinal, std::string_view member_name) -> std::string {
+    return std::format("{}:{}", pass_ordinal, member_name);
+}
+
+auto binding_record_key(uint32_t pass_ordinal, uint32_t binding_slot, std::string_view binding_name)
+    -> std::string {
+    return std::format("{}:{}:{}", pass_ordinal, binding_slot, binding_name);
+}
+
+auto binding_record_state(diagnostics::BindingStatus status, std::string_view resource_identity,
+                          uint32_t width, uint32_t height, uint32_t format, uint32_t producer_pass,
+                          std::string_view alias_name) -> std::string {
+    return std::format("{}:{}:{}:{}:{}:{}:{}", static_cast<uint32_t>(status), resource_identity,
+                       width, height, format, producer_pass, alias_name);
+}
+
 void record_timeline(diagnostics::DiagnosticSession* session, diagnostics::TimelineEventType type,
                      uint32_t pass_ordinal) {
     if (session == nullptr) {
@@ -206,43 +222,48 @@ void initialize_feedback_images(ChainResources& resources, vk::CommandBuffer cmd
 }
 
 template <typename Members>
-void emit_semantic_events(diagnostics::DiagnosticSession& session, const FilterPass& pass,
-                          uint32_t pass_ordinal, const Members& members) {
+void emit_semantic_events(ChainResources& resources, diagnostics::DiagnosticSession& session,
+                          const FilterPass& pass, uint32_t pass_ordinal, const Members& members) {
     for (const auto& member : members) {
         const auto classification = semantic_classification(pass, member.name);
         const auto value = semantic_value(pass, member.name);
 
-        session.record_semantic({
-            .pass_ordinal = pass_ordinal,
-            .member_name = member.name,
-            .classification = classification,
-            .value = value,
-            .offset = static_cast<uint32_t>(member.offset),
-        });
+        const auto semantic_key = semantic_record_key(pass_ordinal, member.name);
+        const bool first_observation =
+            resources.m_recorded_semantic_keys.insert(semantic_key).second;
 
-        diagnostics::DiagnosticEvent event{};
-        event.severity = classification == diagnostics::SemanticClassification::unresolved
-                             ? diagnostics::Severity::warning
-                             : diagnostics::Severity::info;
-        event.original_severity = event.severity;
-        event.category = diagnostics::Category::runtime;
-        event.localization = {
-            .pass_ordinal = pass_ordinal,
-            .stage = "semantic",
-            .resource = member.name,
-        };
-        event.frame_index = session.current_frame();
-        event.message = std::format("Pass {} semantic '{}' classified as {}", pass_ordinal,
-                                    member.name, semantic_classification_name(classification));
-        event.evidence = diagnostics::SemanticEvidence{
-            .member_name = member.name,
-            .classification = semantic_classification_name(classification),
-            .value = value,
-            .offset = static_cast<uint32_t>(member.offset),
-        };
-        session.emit(std::move(event));
+        if (first_observation) {
+            session.record_semantic({
+                .pass_ordinal = pass_ordinal,
+                .member_name = member.name,
+                .classification = classification,
+                .value = value,
+                .offset = static_cast<uint32_t>(member.offset),
+            });
+        }
 
-        if (classification == diagnostics::SemanticClassification::unresolved) {
+        if (classification == diagnostics::SemanticClassification::unresolved &&
+            first_observation) {
+            diagnostics::DiagnosticEvent event{};
+            event.severity = diagnostics::Severity::warning;
+            event.original_severity = diagnostics::Severity::warning;
+            event.category = diagnostics::Category::runtime;
+            event.localization = {
+                .pass_ordinal = pass_ordinal,
+                .stage = "semantic",
+                .resource = member.name,
+            };
+            event.frame_index = session.current_frame();
+            event.message = std::format("Pass {} semantic '{}' classified as {}", pass_ordinal,
+                                        member.name, semantic_classification_name(classification));
+            event.evidence = diagnostics::SemanticEvidence{
+                .member_name = member.name,
+                .classification = semantic_classification_name(classification),
+                .value = value,
+                .offset = static_cast<uint32_t>(member.offset),
+            };
+            session.emit(std::move(event));
+
             session.record_degradation({
                 .pass_ordinal = pass_ordinal,
                 .expected_resource = member.name,
@@ -333,49 +354,59 @@ auto emit_binding_diagnostics(ChainResources& resources, FilterPass& pass, size_
             resource_identity = "Source";
         }
 
-        session.record_binding({
-            .pass_ordinal = static_cast<uint32_t>(pass_index),
-            .binding_slot = binding.binding,
-            .status = status,
-            .resource_identity = resource_identity,
-            .width = width,
-            .height = height,
-            .format = format,
-            .producer_pass_ordinal = producer_pass,
-            .alias_name = alias_name,
-        });
-
-        diagnostics::DiagnosticEvent event{};
-        event.severity = status == diagnostics::BindingStatus::substituted
-                             ? diagnostics::Severity::warning
-                             : diagnostics::Severity::info;
-        event.original_severity = event.severity;
-        event.category = diagnostics::Category::runtime;
-        event.localization = {.pass_ordinal = static_cast<uint32_t>(pass_index),
-                              .stage = "bind",
-                              .resource = binding.name};
-        event.frame_index = session.current_frame();
-        event.message = std::format("Pass {} binding '{}' resolved to {}", pass_index, binding.name,
-                                    resource_identity);
-        event.evidence = diagnostics::BindingEvidence{
-            .resource_id = resource_identity,
-            .is_fallback = status == diagnostics::BindingStatus::substituted,
-            .width = width,
-            .height = height,
-            .format = format,
-            .producer_pass = producer_pass,
-            .alias_name = alias_name,
-        };
-        session.emit(std::move(event));
+        const auto binding_key =
+            binding_record_key(static_cast<uint32_t>(pass_index), binding.binding, binding.name);
+        const auto binding_state = binding_record_state(status, resource_identity, width, height,
+                                                        format, producer_pass, alias_name);
+        const auto binding_it = resources.m_recorded_binding_states.find(binding_key);
+        const bool changed = binding_it == resources.m_recorded_binding_states.end() ||
+                             binding_it->second != binding_state;
+        if (changed) {
+            resources.m_recorded_binding_states[binding_key] = binding_state;
+            session.record_binding({
+                .pass_ordinal = static_cast<uint32_t>(pass_index),
+                .binding_slot = binding.binding,
+                .status = status,
+                .resource_identity = resource_identity,
+                .width = width,
+                .height = height,
+                .format = format,
+                .producer_pass_ordinal = producer_pass,
+                .alias_name = alias_name,
+            });
+        }
 
         if (status == diagnostics::BindingStatus::substituted) {
-            session.record_degradation({
-                .pass_ordinal = static_cast<uint32_t>(pass_index),
-                .expected_resource = binding.name,
-                .substituted_resource = resource_identity,
-                .frame_index = session.current_frame(),
-                .type = diagnostics::DegradationType::texture_fallback,
-            });
+            if (changed) {
+                diagnostics::DiagnosticEvent event{};
+                event.severity = diagnostics::Severity::warning;
+                event.original_severity = diagnostics::Severity::warning;
+                event.category = diagnostics::Category::runtime;
+                event.localization = {.pass_ordinal = static_cast<uint32_t>(pass_index),
+                                      .stage = "bind",
+                                      .resource = binding.name};
+                event.frame_index = session.current_frame();
+                event.message = std::format("Pass {} binding '{}' resolved to {}", pass_index,
+                                            binding.name, resource_identity);
+                event.evidence = diagnostics::BindingEvidence{
+                    .resource_id = resource_identity,
+                    .is_fallback = true,
+                    .width = width,
+                    .height = height,
+                    .format = format,
+                    .producer_pass = producer_pass,
+                    .alias_name = alias_name,
+                };
+                session.emit(std::move(event));
+
+                session.record_degradation({
+                    .pass_ordinal = static_cast<uint32_t>(pass_index),
+                    .expected_resource = binding.name,
+                    .substituted_resource = resource_identity,
+                    .frame_index = session.current_frame(),
+                    .type = diagnostics::DegradationType::texture_fallback,
+                });
+            }
 
             if (session.policy().mode == diagnostics::PolicyMode::strict) {
                 strict_fallback_forbidden = true;
@@ -641,11 +672,11 @@ void ChainExecutor::record(ChainResources& resources, vk::CommandBuffer cmd,
         if (session != nullptr) {
             const auto& reflection = pass->reflection();
             if (reflection.ubo) {
-                emit_semantic_events(*session, *pass, static_cast<uint32_t>(i),
+                emit_semantic_events(resources, *session, *pass, static_cast<uint32_t>(i),
                                      reflection.ubo->members);
             }
             if (reflection.push_constants) {
-                emit_semantic_events(*session, *pass, static_cast<uint32_t>(i),
+                emit_semantic_events(resources, *session, *pass, static_cast<uint32_t>(i),
                                      reflection.push_constants->members);
             }
         }
