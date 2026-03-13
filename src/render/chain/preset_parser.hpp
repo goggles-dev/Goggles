@@ -1,9 +1,9 @@
 #pragma once
 
 #include <filesystem>
+#include <goggles/filter_chain/result.hpp>
 #include <optional>
 #include <string>
-#include <util/error.hpp>
 #include <vector>
 #include <vulkan/vulkan.hpp>
 

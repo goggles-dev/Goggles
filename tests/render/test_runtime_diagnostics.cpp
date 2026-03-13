@@ -731,7 +731,7 @@ TEST_CASE("FilterChainController auto-enables diagnostics from config",
          .diagnostics_config = diagnostics});
     REQUIRE(recreate_result);
 
-    const auto summary = controller.filter_chain_runtime().diagnostics_summary();
+    const auto summary = controller.filter_chain.diagnostics_summary();
     REQUIRE(summary);
     CHECK(summary->reporting_mode == goggles::render::ChainDiagnosticReportingMode::investigate);
     CHECK(summary->policy_mode == goggles::render::ChainDiagnosticPolicyMode::strict);

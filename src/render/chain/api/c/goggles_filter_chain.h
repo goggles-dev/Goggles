@@ -73,7 +73,8 @@ struct GogglesChainExtent2D {
 };
 
 /// @brief Provide Vulkan context handles required for runtime creation.
-/// @note Keep these handles valid until `goggles_chain_destroy` completes.
+/// @note These remain host-owned handles. Keep them valid until `goggles_chain_destroy`
+/// completes.
 struct GogglesChainVkContext {
     VkDevice device;
     VkPhysicalDevice physical_device;
@@ -108,6 +109,7 @@ struct GogglesChainVkCreateInfoEx {
 };
 
 /// @brief Describe one frame record call.
+/// @note Command buffer, source image/view, and target view remain host-owned record-time inputs.
 /// @note Set `struct_size` with
 /// `GOGGLES_CHAIN_STRUCT_SIZE(goggles_chain_vk_record_info_t)`.
 struct GogglesChainVkRecordInfo {
@@ -441,8 +443,8 @@ goggles_chain_destroy(goggles_chain_t** chain);
 /// @brief Load a preset from a NUL-terminated UTF-8 path.
 /// @param chain Provide a live runtime in `CREATED` or `READY` state.
 /// @param preset_path_utf8 Provide a non-empty UTF-8 path.
-/// @return Return `GOGGLES_CHAIN_STATUS_OK` on success and transition or keep
-/// runtime in `READY`.
+/// @return Return `GOGGLES_CHAIN_STATUS_OK` on success and transition or keep runtime in `READY`.
+/// @note This remains the explicit preset/runtime rebuild path.
 GOGGLES_CHAIN_API goggles_chain_status_t GOGGLES_CHAIN_CALL
 goggles_chain_preset_load(goggles_chain_t* chain, const char* preset_path_utf8);
 
@@ -450,8 +452,8 @@ goggles_chain_preset_load(goggles_chain_t* chain, const char* preset_path_utf8);
 /// @param chain Provide a live runtime in `CREATED` or `READY` state.
 /// @param preset_path_utf8 Provide UTF-8 bytes with no embedded NUL.
 /// @param preset_path_len Provide the byte length of `preset_path_utf8`.
-/// @return Return `GOGGLES_CHAIN_STATUS_OK` on success and transition or keep
-/// runtime in `READY`.
+/// @return Return `GOGGLES_CHAIN_STATUS_OK` on success and transition or keep runtime in `READY`.
+/// @note This remains the explicit preset/runtime rebuild path.
 GOGGLES_CHAIN_API goggles_chain_status_t GOGGLES_CHAIN_CALL goggles_chain_preset_load_ex(
     goggles_chain_t* chain, const char* preset_path_utf8, size_t preset_path_len);
 
@@ -466,6 +468,9 @@ goggles_chain_handle_resize(goggles_chain_t* chain, goggles_chain_extent2d_t new
 /// @param chain Provide a live runtime in `CREATED` or `READY` state.
 /// @param target_format Provide a concrete Vulkan color format.
 /// @return Return `GOGGLES_CHAIN_STATUS_OK` on success.
+/// @note This retarget operation is distinct from preset load/reload. It preserves active preset
+/// identity and source-independent runtime state on success while rebuilding only output-bound
+/// library state for the new host-owned presentation target.
 GOGGLES_CHAIN_API goggles_chain_status_t GOGGLES_CHAIN_CALL
 goggles_chain_output_retarget_vk(goggles_chain_t* chain, VkFormat target_format);
 
@@ -474,6 +479,7 @@ goggles_chain_output_retarget_vk(goggles_chain_t* chain, VkFormat target_format)
 /// @param record_info Provide valid frame input/output views and frame index.
 /// @return Return status of the record operation. This call does not submit or
 /// present. Invalid arguments record no commands.
+/// @note Swapchain lifecycle, submission, and present remain host responsibilities.
 GOGGLES_CHAIN_API goggles_chain_status_t GOGGLES_CHAIN_CALL
 goggles_chain_record_vk(goggles_chain_t* chain, const goggles_chain_vk_record_info_t* record_info);
 

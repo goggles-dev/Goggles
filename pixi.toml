@@ -54,11 +54,6 @@ cmd = "bash scripts/task/ci.sh --lane static-analysis-semgrep"
 description = "Run the quality-build static-analysis lane"
 cmd = "bash scripts/task/ci.sh --lane static-analysis-quality"
 
-[tasks.smoke-filter-chain]
-description = "Run local filter-chain ABI smoke matrix"
-cmd = "bash scripts/task/smoke-filter-chain.sh"
-depends-on = ["_check-init"]
-
 [tasks.start]
 description = "Launch app inside compositor + viewer"
 cmd = "bash scripts/task/start.sh"

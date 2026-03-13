@@ -9,10 +9,11 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <goggles/filter_chain/filter_controls.hpp>
+#include <goggles/filter_chain/result.hpp>
+#include <goggles/filter_chain/scale_mode.hpp>
 #include <optional>
-#include <render/chain/filter_controls.hpp>
 #include <util/config.hpp>
-#include <util/error.hpp>
 #include <util/external_image.hpp>
 #include <vector>
 

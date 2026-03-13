@@ -1,10 +1,10 @@
 #pragma once
 
 #include <filesystem>
+#include <goggles/filter_chain/result.hpp>
 #include <optional>
 #include <string>
 #include <util/diagnostics/source_provenance.hpp>
-#include <util/error.hpp>
 #include <vector>
 
 namespace goggles::render {

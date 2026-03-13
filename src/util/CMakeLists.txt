@@ -1,8 +1,31 @@
 # Utility subsystem
 # Provides error handling, logging, and configuration infrastructure
 
-add_library(goggles_util STATIC
+add_library(goggles_util_logging_obj OBJECT
     logging.cpp
+)
+
+target_include_directories(goggles_util_logging_obj PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(goggles_util_logging_obj PRIVATE
+    spdlog::spdlog
+)
+
+if(DEFINED GOGGLES_CHAIN_LIBRARY_TYPE)
+    string(TOUPPER "${GOGGLES_CHAIN_LIBRARY_TYPE}" _LOGGING_LIB_TYPE)
+    if(_LOGGING_LIB_TYPE STREQUAL "SHARED")
+        set_target_properties(goggles_util_logging_obj PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    endif()
+endif()
+
+goggles_enable_clang_tidy(goggles_util_logging_obj)
+goggles_enable_sanitizers(goggles_util_logging_obj)
+goggles_enable_profiling(goggles_util_logging_obj)
+
+add_library(goggles_util STATIC
+    $<TARGET_OBJECTS:goggles_util_logging_obj>
     config.cpp
     paths.cpp
     job_system.cpp

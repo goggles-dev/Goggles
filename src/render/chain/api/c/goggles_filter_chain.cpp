@@ -5,17 +5,17 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <goggles/filter_chain/filter_controls.hpp>
+#include <goggles/filter_chain/result.hpp>
+#include <goggles/filter_chain/scale_mode.hpp>
+#include <goggles/filter_chain/vulkan_context.hpp>
 #include <memory>
 #include <optional>
 #include <render/chain/chain_runtime.hpp>
-#include <render/chain/filter_controls.hpp>
-#include <render/chain/vulkan_context.hpp>
 #include <string>
 #include <string_view>
-#include <util/config.hpp>
 #include <util/diagnostics/diagnostic_policy.hpp>
 #include <util/diagnostics/diagnostic_sink.hpp>
-#include <util/error.hpp>
 #include <vector>
 #include <vulkan/vulkan.hpp>
 

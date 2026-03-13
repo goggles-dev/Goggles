@@ -1,8 +1,8 @@
 #pragma once
 
 #include "chain_resources.hpp"
-#include "filter_controls.hpp"
 
+#include <goggles/filter_chain/filter_controls.hpp>
 #include <optional>
 #include <unordered_map>
 #include <vector>

@@ -8,11 +8,12 @@
 #include "output_pass.hpp"
 #include "pass.hpp"
 #include "preset_parser.hpp"
-#include "vulkan_context.hpp"
 
 #include <atomic>
+#include <goggles/filter_chain/vulkan_context.hpp>
 #include <memory>
 #include <render/texture/texture_loader.hpp>
+#include <string>
 #include <unordered_map>
 #include <util/diagnostics/diagnostic_session.hpp>
 #include <vector>

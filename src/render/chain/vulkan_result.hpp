@@ -1,6 +1,6 @@
 #pragma once
 
-#include <util/error.hpp>
+#include <goggles/filter_chain/error.hpp>
 #include <vulkan/vulkan.hpp>
 
 // NOLINTBEGIN(cppcoreguidelines-macro-usage)

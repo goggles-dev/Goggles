@@ -12,7 +12,6 @@ Build Commands
                                             Lanes: format, build-test, static-analysis,
                                                    static-analysis-semgrep, static-analysis-quality,
                                                    static-analysis-quality-pr
-  pixi run smoke-filter-chain             Run local ABI smoke matrix (shared/static x clang/gcc)
 
 Run Commands
   pixi run start [-p PRESET] [--] <APP> [APP_ARGS...]
@@ -29,8 +28,7 @@ Utilities
 
 Options
   -p, --preset PRESET   Build preset (default: debug)
-                        Valid: debug, release, relwithdebinfo, asan, ubsan, asan-ubsan, test, quality, profile,
-                               smoke-static-clang, smoke-shared-clang, smoke-static-gcc, smoke-shared-gcc
+                         Valid: debug, release, relwithdebinfo, asan, ubsan, asan-ubsan, test, test-shared, quality, profile
   --base-ref REF        Git ref used by `static-analysis-quality-pr` changed-file selection
 
 Examples
@@ -45,7 +43,7 @@ Examples
   pixi run ci --lane static-analysis-quality-pr --base-ref main
                                              Run clang-tidy only on changed src files relative to main
   pixi run ci --runner container --cache-mode cold --lane build-test
-                                              Run the build-and-test lane in a fresh CI container
+                                               Run the build-and-test lane in a fresh CI container
   pixi run start -- vkcube                Run vkcube in the compositor
   pixi run start -p release -- vkcube     Run with release build
   pixi run profile -- vkcube              Capture a viewer Tracy trace

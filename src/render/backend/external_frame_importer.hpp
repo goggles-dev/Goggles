@@ -3,7 +3,7 @@
 #include "vulkan_context.hpp"
 
 #include <array>
-#include <util/error.hpp>
+#include <goggles/filter_chain/result.hpp>
 #include <util/external_image.hpp>
 #include <vulkan/vulkan.hpp>
 

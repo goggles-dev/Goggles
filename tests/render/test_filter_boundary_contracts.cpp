@@ -1,6 +1,5 @@
 #include "compositor/compositor_runtime_metrics.hpp"
 #include "render/backend/vulkan_backend.hpp"
-#include "render/chain/filter_controls.hpp"
 #include "ui/imgui_layer.hpp"
 
 #include <algorithm>
@@ -10,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <goggles/filter_chain/filter_controls.hpp>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -66,6 +66,7 @@ auto count_occurrences(std::string_view text, std::string_view needle) -> size_t
 }
 
 auto surface_token(std::uintptr_t value) -> goggles::input::wlr_surface* {
+    // NOLINTNEXTLINE(performance-no-int-to-ptr)
     return reinterpret_cast<goggles::input::wlr_surface*>(value);
 }
 
@@ -125,7 +126,8 @@ TEST_CASE("Filter chain boundary control contract coverage", "[filter_chain][bou
         std::filesystem::path(GOGGLES_SOURCE_DIR) / "src/render/backend/vulkan_context.hpp";
     auto backend_context_text = read_text_file(backend_context_path);
     REQUIRE(backend_context_text.has_value());
-    REQUIRE(backend_context_text->find("render/chain/vulkan_context.hpp") != std::string::npos);
+    REQUIRE(backend_context_text->find("goggles/filter_chain/vulkan_context.hpp") !=
+            std::string::npos);
     REQUIRE(backend_context_text->find("boundary_context(") != std::string::npos);
 
     const auto prechain_list_pos =
@@ -322,6 +324,9 @@ TEST_CASE("Async swap and resize safety contract coverage", "[filter_chain][asyn
     REQUIRE(backend_text->find("m_render_output.clear_resize_request()") != std::string::npos);
     REQUIRE(backend_text->find("m_filter_chain_controller.current_prechain_resolution()") !=
             std::string::npos);
+    REQUIRE(backend_text->find("m_filter_chain_controller.filter_chain_runtime()") ==
+            std::string::npos);
+    REQUIRE(backend_text->find("m_filter_chain_controller.record(") != std::string::npos);
     REQUIRE(render_output_text->find("auto RenderOutput::acquire_next_image") != std::string::npos);
     REQUIRE(render_output_text->find("auto RenderOutput::submit_and_present") != std::string::npos);
     REQUIRE(render_output_text->find("auto RenderOutput::submit_headless") != std::string::npos);
@@ -348,10 +353,39 @@ TEST_CASE("Async swap and resize safety contract coverage", "[filter_chain][asyn
 }
 
 TEST_CASE("Filter chain wrapper boundary contract coverage", "[filter_chain][wrapper_contract]") {
+    const auto c_api_hpp =
+        std::filesystem::path(GOGGLES_SOURCE_DIR) / "src/render/chain/api/c/goggles_filter_chain.h";
     const auto wrapper_hpp = std::filesystem::path(GOGGLES_SOURCE_DIR) /
                              "src/render/chain/api/cpp/goggles_filter_chain.hpp";
+    const auto canonical_filter_controls_hpp =
+        std::filesystem::path(GOGGLES_SOURCE_DIR) /
+        "src/render/chain/include/goggles/filter_chain/filter_controls.hpp";
+    const auto canonical_vulkan_context_hpp =
+        std::filesystem::path(GOGGLES_SOURCE_DIR) /
+        "src/render/chain/include/goggles/filter_chain/vulkan_context.hpp";
+    const auto canonical_error_hpp = std::filesystem::path(GOGGLES_SOURCE_DIR) /
+                                     "src/render/chain/include/goggles/filter_chain/error.hpp";
+    const auto canonical_result_hpp = std::filesystem::path(GOGGLES_SOURCE_DIR) /
+                                      "src/render/chain/include/goggles/filter_chain/result.hpp";
+    const auto canonical_scale_mode_hpp =
+        std::filesystem::path(GOGGLES_SOURCE_DIR) /
+        "src/render/chain/include/goggles/filter_chain/scale_mode.hpp";
+
+    auto c_api_text = read_text_file(c_api_hpp);
     auto header_text = read_text_file(wrapper_hpp);
+    auto canonical_filter_controls_text = read_text_file(canonical_filter_controls_hpp);
+    auto canonical_vulkan_context_text = read_text_file(canonical_vulkan_context_hpp);
+    auto canonical_error_text = read_text_file(canonical_error_hpp);
+    auto canonical_result_text = read_text_file(canonical_result_hpp);
+    auto canonical_scale_mode_text = read_text_file(canonical_scale_mode_hpp);
+
+    REQUIRE(c_api_text.has_value());
     REQUIRE(header_text.has_value());
+    REQUIRE(canonical_filter_controls_text.has_value());
+    REQUIRE(canonical_vulkan_context_text.has_value());
+    REQUIRE(canonical_error_text.has_value());
+    REQUIRE(canonical_result_text.has_value());
+    REQUIRE(canonical_scale_mode_text.has_value());
 
     REQUIRE(header_text->find("class GOGGLES_CHAIN_CPP_API FilterChainRuntime") !=
             std::string::npos);
@@ -366,6 +400,23 @@ TEST_CASE("Filter chain wrapper boundary contract coverage", "[filter_chain][wra
                 "operator=(FilterChainRuntime&& other) noexcept -> FilterChainRuntime&") !=
             std::string::npos);
     REQUIRE(header_text->find("goggles_chain_t**") == std::string::npos);
+    REQUIRE(header_text->find("#include <goggles_filter_chain.h>") != std::string::npos);
+    REQUIRE(header_text->find("render/chain/api/c/goggles_filter_chain.h") == std::string::npos);
+    REQUIRE(header_text->find("#include <goggles/filter_chain/result.hpp>") != std::string::npos);
+    REQUIRE(header_text->find("util/error.hpp") == std::string::npos);
+    REQUIRE(header_text->find("util/config.hpp") == std::string::npos);
+
+    REQUIRE(c_api_text->find("util/") == std::string::npos);
+    REQUIRE(c_api_text->find("distinct from preset load/reload") != std::string::npos);
+    REQUIRE(c_api_text->find(
+                "Swapchain lifecycle, submission, and present remain host responsibilities") !=
+            std::string::npos);
+
+    REQUIRE(canonical_filter_controls_text->find("util/") == std::string::npos);
+    REQUIRE(canonical_vulkan_context_text->find("util/") == std::string::npos);
+    REQUIRE(canonical_error_text->find("util/") == std::string::npos);
+    REQUIRE(canonical_result_text->find("util/") == std::string::npos);
+    REQUIRE(canonical_scale_mode_text->find("util/") == std::string::npos);
 
     using goggles::render::ChainStageMask;
     using goggles::render::ChainStagePolicy;
@@ -418,10 +469,16 @@ TEST_CASE("Runtime metrics keep root ownership while tracking the current captur
     auto* game_root = surface_token(0x1000);
     auto* popup_surface = surface_token(0x2000);
     auto* other_root = surface_token(0x3000);
-    const RuntimeMetricsState::CaptureTarget game_capture_target{game_root, game_root};
-    const RuntimeMetricsState::CaptureTarget popup_capture_target{game_root, popup_surface};
-    const RuntimeMetricsState::CaptureTarget other_capture_target{other_root, other_root};
-    const RuntimeMetricsState::CaptureTarget other_popup_capture_target{other_root, popup_surface};
+    const RuntimeMetricsState::CaptureTarget game_capture_target{.root_surface = game_root,
+                                                                 .surface = game_root};
+    const RuntimeMetricsState::CaptureTarget popup_capture_target{.root_surface = game_root,
+                                                                  .surface = popup_surface};
+    const RuntimeMetricsState::CaptureTarget other_capture_target{.root_surface = other_root,
+                                                                  .surface = other_root};
+    const RuntimeMetricsState::CaptureTarget other_popup_capture_target{
+        .root_surface = other_root,
+        .surface = popup_surface,
+    };
 
     metrics.game_frame_intervals_ms[0] = 16.0F;
     metrics.compositor_latency_samples_ms[0] = 4.0F;

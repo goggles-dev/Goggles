@@ -7,6 +7,7 @@ add_library(goggles_render_shader_obj OBJECT
 )
 
 target_include_directories(goggles_render_shader_obj PUBLIC
+    ${CMAKE_SOURCE_DIR}/src/render/chain/include
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/..
 )
@@ -15,13 +16,13 @@ target_compile_definitions(goggles_render_shader_obj PRIVATE
     GOGGLES_LOG_TAG="render.shader"
 )
 
-target_link_libraries(goggles_render_shader_obj PUBLIC
+target_link_libraries(goggles_render_shader_obj PRIVATE
     goggles_util
     Vulkan::Vulkan
     slang::slang
 )
 
-target_compile_definitions(goggles_render_shader_obj PUBLIC
+target_compile_definitions(goggles_render_shader_obj PRIVATE
     VULKAN_HPP_NO_EXCEPTIONS
     VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
 )

@@ -4,7 +4,6 @@
 
 #include <cmath>
 #include <format>
-#include <unordered_set>
 #include <util/diagnostics/diagnostic_event.hpp>
 #include <util/logging.hpp>
 #include <util/profiling.hpp>

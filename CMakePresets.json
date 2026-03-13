@@ -79,6 +79,13 @@
       }
     },
     {
+      "name": ".shared",
+      "hidden": true,
+      "cacheVariables": {
+        "GOGGLES_CHAIN_LIBRARY_TYPE": "SHARED"
+      }
+    },
+    {
       "name": "debug",
       "displayName": "Debug",
       "description": "Debug build with no optimizations",
@@ -155,56 +162,15 @@
       ]
     },
     {
-      "name": "smoke-static-clang",
-      "displayName": "Smoke static (clang)",
-      "description": "Local smoke lane: static filter-chain with clang",
+      "name": "test-shared",
+      "displayName": "Test + Shared Library",
+      "description": "Test preset with goggles-filter-chain built as a shared library",
       "inherits": [
-        ".debug"
-      ],
-      "cacheVariables": {
-        "GOGGLES_CHAIN_LIBRARY_TYPE": "STATIC",
-        "CMAKE_C_COMPILER": "$env{CC}",
-        "CMAKE_CXX_COMPILER": "$env{CXX}"
-      }
-    },
-    {
-      "name": "smoke-shared-clang",
-      "displayName": "Smoke shared (clang)",
-      "description": "Local smoke lane: shared filter-chain with clang",
-      "inherits": [
-        ".debug"
-      ],
-      "cacheVariables": {
-        "GOGGLES_CHAIN_LIBRARY_TYPE": "SHARED",
-        "CMAKE_C_COMPILER": "$env{CC}",
-        "CMAKE_CXX_COMPILER": "$env{CXX}"
-      }
-    },
-    {
-      "name": "smoke-static-gcc",
-      "displayName": "Smoke static (gcc)",
-      "description": "Local smoke lane: static filter-chain with gcc",
-      "inherits": [
-        ".debug"
-      ],
-      "cacheVariables": {
-        "GOGGLES_CHAIN_LIBRARY_TYPE": "STATIC",
-        "CMAKE_C_COMPILER": "$env{GCC}",
-        "CMAKE_CXX_COMPILER": "$env{GXX}"
-      }
-    },
-    {
-      "name": "smoke-shared-gcc",
-      "displayName": "Smoke shared (gcc)",
-      "description": "Local smoke lane: shared filter-chain with gcc",
-      "inherits": [
-        ".debug"
-      ],
-      "cacheVariables": {
-        "GOGGLES_CHAIN_LIBRARY_TYPE": "SHARED",
-        "CMAKE_C_COMPILER": "$env{GCC}",
-        "CMAKE_CXX_COMPILER": "$env{GXX}"
-      }
+        ".debug",
+        ".asan",
+        ".test",
+        ".shared"
+      ]
     }
   ],
   "buildPresets": [
@@ -245,20 +211,8 @@
       "configurePreset": "profile"
     },
     {
-      "name": "smoke-static-clang",
-      "configurePreset": "smoke-static-clang"
-    },
-    {
-      "name": "smoke-shared-clang",
-      "configurePreset": "smoke-shared-clang"
-    },
-    {
-      "name": "smoke-static-gcc",
-      "configurePreset": "smoke-static-gcc"
-    },
-    {
-      "name": "smoke-shared-gcc",
-      "configurePreset": "smoke-shared-gcc"
+      "name": "test-shared",
+      "configurePreset": "test-shared"
     }
   ],
   "testPresets": [
@@ -279,6 +233,18 @@
       "displayName": "ASAN Test Execution",
       "description": "Test execution with AddressSanitizer",
       "configurePreset": "asan",
+      "output": {
+        "verbosity": "verbose"
+      },
+      "execution": {
+        "jobs": 0
+      }
+    },
+    {
+      "name": "test-shared",
+      "displayName": "Test Execution (Shared Library)",
+      "description": "Test execution with goggles-filter-chain as shared library",
+      "configurePreset": "test-shared",
       "output": {
         "verbosity": "verbose"
       },
