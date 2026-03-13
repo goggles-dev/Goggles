@@ -153,6 +153,7 @@ public:
 
     [[nodiscard]] auto load_preset(const std::filesystem::path& preset_path) -> Result<void>;
     [[nodiscard]] auto handle_resize(vk::Extent2D new_target_extent) -> Result<void>;
+    [[nodiscard]] auto retarget_output(vk::Format target_format) -> Result<void>;
     [[nodiscard]] auto set_stage_policy(const ChainStagePolicy& policy) -> Result<void>;
     [[nodiscard]] auto get_stage_policy() const -> Result<ChainStagePolicy>;
     [[nodiscard]] auto set_prechain_resolution(vk::Extent2D resolution) -> Result<void>;

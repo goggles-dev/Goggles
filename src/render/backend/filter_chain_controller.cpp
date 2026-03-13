@@ -162,6 +162,35 @@ auto apply_runtime_state(FilterChainRuntime& chain, const ChainStagePolicy& poli
     return {};
 }
 
+auto align_runtime_output_target(FilterChainRuntime& chain,
+                                 const FilterChainController::OutputTarget& output_target,
+                                 std::string_view operation_context) -> Result<void> {
+    if (output_target.format == vk::Format::eUndefined) {
+        return make_error<void>(ErrorCode::invalid_data,
+                                "Authoritative output format is undefined");
+    }
+    if (output_target.extent.width == 0 || output_target.extent.height == 0) {
+        return make_error<void>(ErrorCode::invalid_data, "Authoritative output extent is zero");
+    }
+
+    auto retarget_result = chain.retarget_output(output_target.format);
+    if (!retarget_result) {
+        return make_error<void>(retarget_result.error().code, std::string("Failed to retarget ") +
+                                                                  std::string(operation_context) +
+                                                                  ": " +
+                                                                  retarget_result.error().message);
+    }
+
+    auto resize_result = chain.handle_resize(output_target.extent);
+    if (!resize_result) {
+        return make_error<void>(resize_result.error().code,
+                                std::string("Failed to resize ") + std::string(operation_context) +
+                                    ": " + resize_result.error().message);
+    }
+
+    return {};
+}
+
 auto fallback_retire_after_frame(uint64_t frame_count) -> uint64_t {
     constexpr uint64_t MAX_FRAME = std::numeric_limits<uint64_t>::max();
     constexpr uint64_t RETIRE_DELAY =
@@ -229,6 +258,11 @@ auto FilterChainController::recreate_filter_chain(const RuntimeBuildConfig& conf
     -> Result<void> {
     GOGGLES_PROFILE_FUNCTION();
 
+    authoritative_output_target = OutputTarget{
+        .format = config.target_format,
+        .extent = config.target_extent,
+    };
+
     const auto control_state = authoritative_control_overrides.empty()
                                    ? snapshot_runtime_controls(filter_chain)
                                    : authoritative_control_overrides;
@@ -267,8 +301,35 @@ auto FilterChainController::recreate_filter_chain(const RuntimeBuildConfig& conf
         filter_chain = {};
         return nonstd::make_unexpected(restore_result.error());
     }
+
+    auto output_result = align_runtime_output_target(filter_chain, authoritative_output_target,
+                                                     "filter chain after chain rebuild");
+    if (!output_result) {
+        destroy_filter_chain(filter_chain, "Failed to destroy filter chain after output failure");
+        filter_chain = {};
+        return nonstd::make_unexpected(output_result.error());
+    }
+
     authoritative_control_overrides = snapshot_runtime_controls(filter_chain);
 
+    return {};
+}
+
+auto FilterChainController::retarget_filter_chain(const OutputTarget& output_target)
+    -> Result<void> {
+    authoritative_output_target = output_target;
+
+    if (!filter_chain) {
+        return {};
+    }
+
+    auto retarget_result = align_runtime_output_target(filter_chain, authoritative_output_target,
+                                                       "active filter chain after retarget");
+    if (!retarget_result) {
+        return nonstd::make_unexpected(retarget_result.error());
+    }
+
+    authoritative_control_overrides = snapshot_runtime_controls(filter_chain);
     return {};
 }
 
@@ -345,6 +406,7 @@ auto FilterChainController::reload_shader_preset(std::filesystem::path new_prese
         .prechain_enabled = prechain_policy_enabled,
         .effect_stage_enabled = effect_stage_policy_enabled,
     };
+    const auto requested_output_target = authoritative_output_target;
     const auto requested_prechain_resolution = source_resolution;
     auto requested_controls = authoritative_control_overrides.empty()
                                   ? snapshot_runtime_controls(filter_chain)
@@ -352,7 +414,7 @@ auto FilterChainController::reload_shader_preset(std::filesystem::path new_prese
 
     pending_load_future = util::JobSystem::submit(
         [this, build_config = std::move(config), requested_preset_path = std::move(new_preset_path),
-         requested_policy, requested_prechain_resolution,
+         requested_policy, requested_output_target, requested_prechain_resolution,
          requested_controls = std::move(requested_controls)]() -> Result<void> {
             GOGGLES_PROFILE_SCOPE("AsyncShaderLoad");
 
@@ -372,6 +434,8 @@ auto FilterChainController::reload_shader_preset(std::filesystem::path new_prese
             GOGGLES_TRY(apply_runtime_state(pending_chain, requested_policy,
                                             requested_prechain_resolution, requested_controls,
                                             "Failed to restore filter control value before swap"));
+            GOGGLES_TRY(align_runtime_output_target(pending_chain, requested_output_target,
+                                                    "pending filter chain before swap"));
 
             pending_filter_chain = std::move(pending_chain);
             pending_chain_ready.store(true, std::memory_order_release);
@@ -429,6 +493,17 @@ void FilterChainController::check_pending_chain_swap(const std::function<void()>
     if (!restore_result) {
         GOGGLES_LOG_ERROR("Failed to restore filter-chain runtime state before swap: {}",
                           restore_result.error().message);
+        destroy_filter_chain(pending_filter_chain, "Failed to destroy pending filter chain");
+        pending_chain_ready.store(false, std::memory_order_release);
+        return;
+    }
+
+    auto output_result =
+        align_runtime_output_target(pending_filter_chain, authoritative_output_target,
+                                    "pending filter chain before activation");
+    if (!output_result) {
+        GOGGLES_LOG_ERROR("Failed to align pending filter-chain output before swap: {}",
+                          output_result.error().message);
         destroy_filter_chain(pending_filter_chain, "Failed to destroy pending filter chain");
         pending_chain_ready.store(false, std::memory_order_release);
         return;

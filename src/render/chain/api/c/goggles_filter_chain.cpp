@@ -762,6 +762,32 @@ auto goggles_chain_handle_resize(goggles_chain_t* chain, goggles_chain_extent2d_
     }
 }
 
+auto goggles_chain_output_retarget_vk(goggles_chain_t* chain, VkFormat target_format)
+    -> goggles_chain_status_t {
+    try {
+        const auto state_status = ensure_chain_state(chain, false);
+        if (state_status != GOGGLES_CHAIN_STATUS_OK) {
+            return state_status;
+        }
+
+        if (target_format == VK_FORMAT_UNDEFINED) {
+            return fail_chain(chain, GOGGLES_CHAIN_STATUS_INVALID_ARGUMENT,
+                              ErrorSubsystem::validation);
+        }
+
+        auto result = chain->runtime->retarget_output(static_cast<vk::Format>(target_format));
+        if (!result) {
+            return fail_chain(chain, map_error_code(result.error().code), ErrorSubsystem::runtime);
+        }
+
+        return GOGGLES_CHAIN_STATUS_OK;
+    } catch (const std::bad_alloc&) {
+        return fail_exception(chain, true);
+    } catch (...) {
+        return fail_exception(chain, false);
+    }
+}
+
 auto goggles_chain_record_vk(goggles_chain_t* chain,
                              const goggles_chain_vk_record_info_t* record_info)
     -> goggles_chain_status_t {

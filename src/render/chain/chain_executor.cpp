@@ -490,16 +490,16 @@ void ChainExecutor::record_postchain(ChainResources& resources, vk::CommandBuffe
                                      vk::ImageView target_view, vk::Extent2D target_extent,
                                      uint32_t frame_index, ScaleMode scale_mode,
                                      uint32_t integer_scale) {
-    if (resources.m_postchain_passes.empty()) {
+    if (resources.m_output_state.postchain_passes.empty()) {
         return;
     }
 
     vk::ImageView current_view = source_view;
     vk::Extent2D current_extent = source_extent;
 
-    for (size_t i = 0; i < resources.m_postchain_passes.size(); ++i) {
-        auto& pass = resources.m_postchain_passes[i];
-        bool is_final = (i == resources.m_postchain_passes.size() - 1);
+    for (size_t i = 0; i < resources.m_output_state.postchain_passes.size(); ++i) {
+        auto& pass = resources.m_output_state.postchain_passes[i];
+        bool is_final = (i == resources.m_output_state.postchain_passes.size() - 1);
 
         vk::ImageView pass_target;
         vk::Extent2D pass_output_extent;
@@ -508,9 +508,9 @@ void ChainExecutor::record_postchain(ChainResources& resources, vk::CommandBuffe
         if (is_final) {
             pass_target = target_view;
             pass_output_extent = target_extent;
-            pass_format = resources.m_swapchain_format;
+            pass_format = resources.m_output_state.swapchain_format;
         } else {
-            auto& framebuffer = resources.m_postchain_framebuffers[i];
+            auto& framebuffer = resources.m_output_state.postchain_framebuffers[i];
             pass_target = framebuffer->view();
             pass_output_extent = framebuffer->extent();
             pass_format = framebuffer->format();
@@ -534,7 +534,7 @@ void ChainExecutor::record_postchain(ChainResources& resources, vk::CommandBuffe
         pass->record(cmd, ctx);
 
         if (!is_final) {
-            auto& framebuffer = resources.m_postchain_framebuffers[i];
+            auto& framebuffer = resources.m_output_state.postchain_framebuffers[i];
 
             transition_image_layout(cmd, framebuffer->image(),
                                     {.from = vk::ImageLayout::eColorAttachmentOptimal,

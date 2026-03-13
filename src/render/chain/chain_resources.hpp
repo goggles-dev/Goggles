@@ -39,6 +39,12 @@ struct FramebufferExtents {
 /// @brief Owns all mutable GPU allocations for the filter chain.
 class ChainResources {
 public:
+    struct OutputState {
+        vk::Format swapchain_format = vk::Format::eUndefined;
+        std::vector<std::unique_ptr<Pass>> postchain_passes;
+        std::vector<std::unique_ptr<Framebuffer>> postchain_framebuffers;
+    };
+
     [[nodiscard]] static auto create(const VulkanContext& vk_ctx, vk::Format swapchain_format,
                                      uint32_t num_sync_indices, ShaderRuntime& shader_runtime,
                                      const std::filesystem::path& shader_dir,
@@ -63,6 +69,7 @@ public:
     void cleanup_texture_registry();
 
     [[nodiscard]] auto handle_resize(vk::Extent2D new_viewport_extent) -> Result<void>;
+    [[nodiscard]] auto retarget_output(vk::Format swapchain_format) -> Result<void>;
 
     void set_prechain_resolution(uint32_t width, uint32_t height);
     [[nodiscard]] auto get_prechain_resolution() const -> vk::Extent2D;
@@ -94,7 +101,6 @@ public:
     void set_prechain_parameter(const std::string& name, float value);
 
     VulkanContext m_vk_ctx;
-    vk::Format m_swapchain_format = vk::Format::eUndefined;
     uint32_t m_num_sync_indices = 0;
     ShaderRuntime* m_shader_runtime = nullptr;
     std::filesystem::path m_shader_dir;
@@ -129,9 +135,7 @@ public:
     std::vector<std::unique_ptr<Pass>> m_prechain_passes;
     std::vector<std::unique_ptr<Framebuffer>> m_prechain_framebuffers;
 
-    // Post-chain stage
-    std::vector<std::unique_ptr<Pass>> m_postchain_passes;
-    std::vector<std::unique_ptr<Framebuffer>> m_postchain_framebuffers;
+    OutputState m_output_state;
 
 private:
     ChainResources() = default;

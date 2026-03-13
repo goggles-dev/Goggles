@@ -42,6 +42,7 @@ struct FilterChainController {
         BoundaryVulkanContext vulkan_context;
         uint32_t graphics_queue_family_index = 0;
         vk::Format target_format = vk::Format::eUndefined;
+        vk::Extent2D target_extent;
         uint32_t num_sync_indices = 1;
         std::filesystem::path shader_dir;
         std::filesystem::path cache_dir;
@@ -49,11 +50,17 @@ struct FilterChainController {
         std::optional<Config::Diagnostics> diagnostics_config;
     };
 
+    struct OutputTarget {
+        vk::Format format = vk::Format::eUndefined;
+        vk::Extent2D extent;
+    };
+
     struct PrechainResolutionConfig {
         vk::Extent2D requested_resolution;
     };
 
     [[nodiscard]] auto recreate_filter_chain(const RuntimeBuildConfig& config) -> Result<void>;
+    [[nodiscard]] auto retarget_filter_chain(const OutputTarget& output_target) -> Result<void>;
     void shutdown(const std::function<void()>& wait_for_gpu_idle);
 
     void load_shader_preset(const std::filesystem::path& new_preset_path);
@@ -98,6 +105,7 @@ struct FilterChainController {
     uint64_t frame_count = 0;
     bool prechain_policy_enabled = true;
     bool effect_stage_policy_enabled = true;
+    OutputTarget authoritative_output_target;
 };
 
 } // namespace goggles::render::backend_internal

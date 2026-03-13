@@ -93,6 +93,8 @@ TEST_CASE("Vulkan backend seam declarations stay compile-safe", "[vulkan-backend
     REQUIRE(controller.effect_stage_policy_enabled);
     REQUIRE(controller.retired_runtimes.retired_count == 0u);
     REQUIRE(controller.pending_preset_path.empty());
+    REQUIRE(controller.authoritative_output_target.format == vk::Format::eUndefined);
+    REQUIRE(controller.authoritative_output_target.extent == vk::Extent2D{});
     REQUIRE(boundary_context.command_pool == vk::CommandPool{});
     REQUIRE(boundary_context.device == vk::Device{});
 }
@@ -127,6 +129,8 @@ TEST_CASE("Vulkan backend dependency edge audits stay explicit", "[vulkan-backen
     REQUIRE(find_text(*importer_cpp_text, "retire_wait_semaphore") != std::string::npos);
     REQUIRE(find_text(*importer_cpp_text, "clear_current_source()") != std::string::npos);
     REQUIRE(find_text(*controller_text, "render/chain/vulkan_context.hpp") != std::string::npos);
+    REQUIRE(find_text(*controller_text, "struct OutputTarget") != std::string::npos);
+    REQUIRE(find_text(*controller_text, "retarget_filter_chain") != std::string::npos);
     REQUIRE(find_text(*controller_text, "render_output.hpp") == std::string::npos);
     REQUIRE(find_text(*controller_text, "external_frame_importer.hpp") == std::string::npos);
     REQUIRE(find_text(*backend_header_text, "m_gpu_selector") == std::string::npos);
@@ -257,4 +261,24 @@ TEST_CASE("Vulkan backend teardown audit hooks stay aligned with shutdown order"
     REQUIRE(device_destroy_pos < surface_destroy_pos);
     REQUIRE(surface_destroy_pos < debug_destroy_pos);
     REQUIRE(debug_destroy_pos < instance_destroy_pos);
+
+    const auto recreate_swapchain_pos =
+        find_text(*backend_text, "auto VulkanBackend::recreate_swapchain(");
+    const auto format_change_branch_pos =
+        find_text(*backend_text, "if (recreate_filter_chain) {", recreate_swapchain_pos);
+    const auto retarget_call_pos =
+        find_text(*backend_text, "m_filter_chain_controller.retarget_filter_chain(",
+                  format_change_branch_pos);
+    const auto resize_call_pos = find_text(
+        *backend_text, "m_filter_chain_controller.handle_resize(", format_change_branch_pos);
+    const auto explicit_reload_pos =
+        find_text(*backend_text, "m_filter_chain_controller.reload_shader_preset(");
+
+    REQUIRE(recreate_swapchain_pos != std::string::npos);
+    REQUIRE(format_change_branch_pos != std::string::npos);
+    REQUIRE(retarget_call_pos != std::string::npos);
+    REQUIRE(resize_call_pos != std::string::npos);
+    REQUIRE(explicit_reload_pos != std::string::npos);
+    REQUIRE(format_change_branch_pos < retarget_call_pos);
+    REQUIRE(retarget_call_pos < resize_call_pos);
 }
