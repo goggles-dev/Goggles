@@ -11,9 +11,6 @@ add_library(goggles_render_backend_obj OBJECT
 )
 
 target_include_directories(goggles_render_backend_obj PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/render/chain/include
-    ${CMAKE_SOURCE_DIR}/src/render/chain/api/c
-    ${CMAKE_SOURCE_DIR}/src/render/chain/api/cpp
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/..
 )
@@ -24,6 +21,7 @@ target_compile_definitions(goggles_render_backend_obj PRIVATE
 
 target_link_libraries(goggles_render_backend_obj PUBLIC
     goggles_util
+    GogglesFilterChain::goggles-filter-chain
     Vulkan::Vulkan
     SDL3::SDL3
     slang::slang

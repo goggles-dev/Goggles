@@ -12,10 +12,12 @@
       "binaryDir": "${sourceDir}/build/${presetName}",
       "generator": "Ninja",
       "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "${sourceDir}/build/filter-chain-install/${presetName}",
         "CMAKE_CXX_STANDARD": "20",
         "CMAKE_CXX_STANDARD_REQUIRED": "ON",
         "CMAKE_CXX_EXTENSIONS": "OFF",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "GOGGLES_USE_BUNDLED_FILTER_CHAIN": "OFF"
       }
     },
     {
@@ -76,13 +78,6 @@
       "hidden": true,
       "cacheVariables": {
         "ENABLE_PROFILING": "ON"
-      }
-    },
-    {
-      "name": ".shared",
-      "hidden": true,
-      "cacheVariables": {
-        "GOGGLES_CHAIN_LIBRARY_TYPE": "SHARED"
       }
     },
     {
@@ -160,17 +155,6 @@
         ".release",
         ".profiling"
       ]
-    },
-    {
-      "name": "test-shared",
-      "displayName": "Test + Shared Library",
-      "description": "Test preset with goggles-filter-chain built as a shared library",
-      "inherits": [
-        ".debug",
-        ".asan",
-        ".test",
-        ".shared"
-      ]
     }
   ],
   "buildPresets": [
@@ -209,10 +193,6 @@
     {
       "name": "profile",
       "configurePreset": "profile"
-    },
-    {
-      "name": "test-shared",
-      "configurePreset": "test-shared"
     }
   ],
   "testPresets": [
@@ -233,18 +213,6 @@
       "displayName": "ASAN Test Execution",
       "description": "Test execution with AddressSanitizer",
       "configurePreset": "asan",
-      "output": {
-        "verbosity": "verbose"
-      },
-      "execution": {
-        "jobs": 0
-      }
-    },
-    {
-      "name": "test-shared",
-      "displayName": "Test Execution (Shared Library)",
-      "description": "Test execution with goggles-filter-chain as shared library",
-      "configurePreset": "test-shared",
       "output": {
         "verbosity": "verbose"
       },

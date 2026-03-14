@@ -1,5 +1,4 @@
 #include "render/backend/filter_chain_controller.hpp"
-#include "render/chain/api/cpp/goggles_filter_chain.hpp"
 
 #include <atomic>
 #include <catch2/catch_approx.hpp>
@@ -7,6 +6,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <goggles_filter_chain.hpp>
 #include <optional>
 #include <string>
 #include <thread>
@@ -500,7 +500,7 @@ TEST_CASE("Controller and backend retarget path stays distinct from reload",
 TEST_CASE("Retarget failure path stays staged and non-destructive",
           "[filter_chain][retarget_contract]") {
     const auto resources_cpp =
-        std::filesystem::path(GOGGLES_SOURCE_DIR) / "src/render/chain/chain_resources.cpp";
+        std::filesystem::path(GOGGLES_SOURCE_DIR) / "filter-chain/src/chain/chain_resources.cpp";
     const auto controller_cpp = std::filesystem::path(GOGGLES_SOURCE_DIR) /
                                 "src/render/backend/filter_chain_controller.cpp";
 
