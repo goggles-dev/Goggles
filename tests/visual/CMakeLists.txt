@@ -57,7 +57,10 @@ target_link_libraries(test_intermediate_golden PRIVATE
     Catch2::Catch2WithMain
 )
 target_compile_features(test_intermediate_golden PRIVATE cxx_std_20)
-target_include_directories(test_intermediate_golden PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(test_intermediate_golden PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/filter-chain/src
+)
 target_compile_definitions(test_intermediate_golden PRIVATE
     GOGGLES_BINARY="$<TARGET_FILE:goggles>"
     GOGGLES_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
@@ -82,7 +85,10 @@ target_link_libraries(test_temporal_golden PRIVATE
     Catch2::Catch2WithMain
 )
 target_compile_features(test_temporal_golden PRIVATE cxx_std_20)
-target_include_directories(test_temporal_golden PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(test_temporal_golden PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/filter-chain/src
+)
 target_compile_definitions(test_temporal_golden PRIVATE
     GOGGLES_BINARY="$<TARGET_FILE:goggles>"
     GOGGLES_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
@@ -107,7 +113,10 @@ target_link_libraries(test_semantic_probes PRIVATE
     Catch2::Catch2WithMain
 )
 target_compile_features(test_semantic_probes PRIVATE cxx_std_20)
-target_include_directories(test_semantic_probes PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(test_semantic_probes PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/filter-chain/src
+)
 target_compile_definitions(test_semantic_probes PRIVATE
     GOGGLES_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
 )
@@ -126,7 +135,10 @@ target_link_libraries(goggles_visual_capture PRIVATE
     goggles_render
 )
 target_compile_features(goggles_visual_capture PRIVATE cxx_std_20)
-target_include_directories(goggles_visual_capture PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(goggles_visual_capture PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/filter-chain/src
+)
 target_compile_definitions(goggles_visual_capture PRIVATE
     GOGGLES_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
 )

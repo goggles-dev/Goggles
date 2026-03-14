@@ -1,11 +1,12 @@
 #pragma once
 
+#include "diagnostics/diagnostic_session.hpp"
+#include "diagnostics/test_harness_sink.hpp"
+
 #include <filesystem>
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include <util/diagnostics/diagnostic_session.hpp>
-#include <util/diagnostics/test_harness_sink.hpp>
 #include <util/error.hpp>
 #include <utility>
 #include <vector>

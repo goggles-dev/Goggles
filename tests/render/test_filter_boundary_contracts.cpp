@@ -114,7 +114,7 @@ TEST_CASE("Filter chain boundary control contract coverage", "[filter_chain][bou
     REQUIRE(app_text->find("filter_chain(") == std::string::npos);
 
     const auto chain_path =
-        std::filesystem::path(GOGGLES_SOURCE_DIR) / "src/render/chain/chain_controls.cpp";
+        std::filesystem::path(GOGGLES_SOURCE_DIR) / "filter-chain/src/chain/chain_controls.cpp";
     auto chain_text = read_text_file(chain_path);
     REQUIRE(chain_text.has_value());
 
@@ -354,22 +354,22 @@ TEST_CASE("Async swap and resize safety contract coverage", "[filter_chain][asyn
 
 TEST_CASE("Filter chain wrapper boundary contract coverage", "[filter_chain][wrapper_contract]") {
     const auto c_api_hpp =
-        std::filesystem::path(GOGGLES_SOURCE_DIR) / "src/render/chain/api/c/goggles_filter_chain.h";
-    const auto wrapper_hpp = std::filesystem::path(GOGGLES_SOURCE_DIR) /
-                             "src/render/chain/api/cpp/goggles_filter_chain.hpp";
+        std::filesystem::path(GOGGLES_SOURCE_DIR) / "filter-chain/include/goggles_filter_chain.h";
+    const auto wrapper_hpp =
+        std::filesystem::path(GOGGLES_SOURCE_DIR) / "filter-chain/include/goggles_filter_chain.hpp";
     const auto canonical_filter_controls_hpp =
         std::filesystem::path(GOGGLES_SOURCE_DIR) /
-        "src/render/chain/include/goggles/filter_chain/filter_controls.hpp";
+        "filter-chain/include/goggles/filter_chain/filter_controls.hpp";
     const auto canonical_vulkan_context_hpp =
         std::filesystem::path(GOGGLES_SOURCE_DIR) /
-        "src/render/chain/include/goggles/filter_chain/vulkan_context.hpp";
+        "filter-chain/include/goggles/filter_chain/vulkan_context.hpp";
     const auto canonical_error_hpp = std::filesystem::path(GOGGLES_SOURCE_DIR) /
-                                     "src/render/chain/include/goggles/filter_chain/error.hpp";
+                                     "filter-chain/include/goggles/filter_chain/error.hpp";
     const auto canonical_result_hpp = std::filesystem::path(GOGGLES_SOURCE_DIR) /
-                                      "src/render/chain/include/goggles/filter_chain/result.hpp";
+                                      "filter-chain/include/goggles/filter_chain/result.hpp";
     const auto canonical_scale_mode_hpp =
         std::filesystem::path(GOGGLES_SOURCE_DIR) /
-        "src/render/chain/include/goggles/filter_chain/scale_mode.hpp";
+        "filter-chain/include/goggles/filter_chain/scale_mode.hpp";
 
     auto c_api_text = read_text_file(c_api_hpp);
     auto header_text = read_text_file(wrapper_hpp);
@@ -447,8 +447,8 @@ TEST_CASE("Filter chain wrapper boundary contract coverage", "[filter_chain][wra
     REQUIRE((output_only & ChainStageMask::prechain) == ChainStageMask::none);
     REQUIRE((output_only & ChainStageMask::effect) == ChainStageMask::none);
 
-    const auto wrapper_cpp = std::filesystem::path(GOGGLES_SOURCE_DIR) /
-                             "src/render/chain/api/cpp/goggles_filter_chain.cpp";
+    const auto wrapper_cpp =
+        std::filesystem::path(GOGGLES_SOURCE_DIR) / "filter-chain/src/chain/cpp_wrapper.cpp";
     auto wrapper_text = read_text_file(wrapper_cpp);
     REQUIRE(wrapper_text.has_value());
 

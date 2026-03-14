@@ -1,14 +1,15 @@
 #include "runtime_capture.hpp"
 
+#include "chain/chain_runtime.hpp"
+#include "diagnostics/diagnostic_policy.hpp"
+
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <goggles/filter_chain/vulkan_context.hpp>
-#include <render/chain/chain_runtime.hpp>
 #include <stb/stb_image_write.h>
-#include <util/diagnostics/diagnostic_policy.hpp>
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan.hpp>
 

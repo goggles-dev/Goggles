@@ -29,9 +29,9 @@ auto read_text_file(const std::filesystem::path& path) -> std::optional<std::str
 auto collect_render_boundary_sources() -> std::vector<std::filesystem::path> {
     std::vector<std::filesystem::path> files;
     std::array<std::filesystem::path, 3> directories = {
-        std::filesystem::path(GOGGLES_SOURCE_DIR) / "src/render/chain",
-        std::filesystem::path(GOGGLES_SOURCE_DIR) / "src/render/shader",
-        std::filesystem::path(GOGGLES_SOURCE_DIR) / "src/render/texture",
+        std::filesystem::path(GOGGLES_SOURCE_DIR) / "filter-chain/src/chain",
+        std::filesystem::path(GOGGLES_SOURCE_DIR) / "filter-chain/src/shader",
+        std::filesystem::path(GOGGLES_SOURCE_DIR) / "filter-chain/src/texture",
     };
 
     for (const auto& dir : directories) {
