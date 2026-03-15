@@ -2,6 +2,7 @@
 
 #include "diagnostics/compile_report.hpp"
 #include "diagnostics/source_provenance.hpp"
+#include "runtime/source_resolver.hpp"
 #include "shader/retroarch_preprocessor.hpp"
 #include "support/logging.hpp"
 #include "support/profiling.hpp"
@@ -681,6 +682,139 @@ auto ChainBuilder::build(const VulkanContext& vk_ctx, ShaderRuntime& shader_runt
         "FilterChain loaded preset: {} ({} passes, {} textures, {} aliases, {} params)",
         preset_path.filename().string(), new_passes.size(), texture_registry.size(),
         new_alias_map.size(), preset_result->parameters.size());
+    for (const auto& [alias, pass_idx] : new_alias_map) {
+        GOGGLES_LOG_DEBUG("  Alias '{}' -> pass {}", alias, pass_idx);
+    }
+
+    return CompiledChain{
+        .preset = std::move(*preset_result),
+        .passes = std::move(new_passes),
+        .compile_reports = std::move(compile_reports),
+        .alias_to_pass_index = std::move(new_alias_map),
+        .required_history_depth = required_history_depth,
+        .texture_registry = std::move(texture_registry),
+        .feedback_pass_indices = std::move(feedback_pass_indices),
+    };
+}
+
+auto ChainBuilder::build(const VulkanContext& vk_ctx, ShaderRuntime& shader_runtime,
+                         uint32_t num_sync_indices, TextureLoader& texture_loader,
+                         const filter_chain::runtime::ResolvedSource& resolved,
+                         filter_chain::runtime::SourceResolver& resolver,
+                         const goggles_fc_import_callbacks_t* import_callbacks,
+                         diagnostics::DiagnosticSession* session) -> Result<CompiledChain> {
+    GOGGLES_PROFILE_FUNCTION();
+
+    PresetParser parser;
+    auto preset_result = parser.load(resolved, resolver, import_callbacks);
+    if (!preset_result) {
+        if (session != nullptr) {
+            session->emit(
+                {.severity = diagnostics::Severity::error,
+                 .original_severity = diagnostics::Severity::error,
+                 .category = diagnostics::Category::authoring,
+                 .localization = {.pass_ordinal = diagnostics::LocalizationKey::CHAIN_LEVEL,
+                                  .stage = "preset_parse",
+                                  .resource = {}},
+                 .frame_index = 0,
+                 .timestamp_ns = 0,
+                 .message = preset_result.error().message,
+                 .evidence = {},
+                 .session_identity = std::nullopt});
+        }
+        return make_error<CompiledChain>(preset_result.error().code, preset_result.error().message);
+    }
+
+    if (session != nullptr) {
+        update_identity_field(*session, [&](diagnostics::SessionIdentity* identity) {
+            identity->preset_hash = fnv1a_hash(serialize_preset(*preset_result));
+        });
+        // Use provenance source_name for the diagnostic event rather than a filesystem path
+        std::filesystem::path source_label(
+            resolved.provenance.source_name.empty() ? "<memory>" : resolved.provenance.source_name);
+        emit_preset_parse_event(*session, source_label, *preset_result);
+        emit_chain_manifest(*session, *preset_result);
+    }
+
+    std::vector<std::unique_ptr<FilterPass>> new_passes;
+    std::vector<diagnostics::CompileReport> compile_reports;
+    std::unordered_map<std::string, size_t> new_alias_map;
+    RetroArchPreprocessor preprocessor;
+
+    diagnostics::AuthoringVerdict verdict;
+    verdict.result = diagnostics::VerdictResult::pass;
+    std::string expanded_source_material;
+    std::string compiled_contract_material;
+
+    for (size_t i = 0; i < preset_result->passes.size(); ++i) {
+        const auto& pass_config = preset_result->passes[i];
+        auto pass_ordinal = static_cast<uint32_t>(i);
+
+        auto artifacts = GOGGLES_TRY(build_filter_pass(
+            vk_ctx, shader_runtime, num_sync_indices, preprocessor, pass_config, pass_ordinal,
+            session, &verdict, &expanded_source_material, &compiled_contract_material));
+        compile_reports.push_back(std::move(artifacts.compile_report));
+
+        for (const auto& override : preset_result->parameters) {
+            artifacts.pass->set_parameter_override(override.name, override.value);
+        }
+        auto ubo_result = artifacts.pass->update_ubo_parameters();
+        if (!ubo_result) {
+            return make_error<CompiledChain>(ubo_result.error().code, ubo_result.error().message);
+        }
+
+        new_passes.push_back(std::move(artifacts.pass));
+
+        if (pass_config.alias.has_value()) {
+            new_alias_map[*pass_config.alias] = i;
+        }
+    }
+
+    uint32_t required_history_depth = 0;
+    std::unordered_set<size_t> feedback_pass_indices;
+    for (const auto& pass : new_passes) {
+        for (const auto& tex : pass->texture_bindings()) {
+            if (auto idx = parse_original_history_index(tex.name)) {
+                required_history_depth = std::max(required_history_depth, *idx + 1);
+            }
+            if (auto alias = parse_feedback_alias(tex.name)) {
+                if (auto it = new_alias_map.find(*alias); it != new_alias_map.end()) {
+                    feedback_pass_indices.insert(it->second);
+                    GOGGLES_LOG_DEBUG("Detected feedback texture '{}' -> pass {} (alias '{}')",
+                                      tex.name, it->second, *alias);
+                }
+            }
+            if (auto fb_idx = parse_pass_feedback_index(tex.name)) {
+                if (*fb_idx < new_passes.size()) {
+                    feedback_pass_indices.insert(*fb_idx);
+                    GOGGLES_LOG_DEBUG("Detected PassFeedback{} texture", *fb_idx);
+                }
+            }
+        }
+    }
+    if (required_history_depth > 0) {
+        required_history_depth = std::min(required_history_depth, FrameHistory::MAX_HISTORY);
+        GOGGLES_LOG_DEBUG("Detected OriginalHistory usage, depth={}", required_history_depth);
+    }
+
+    auto texture_registry =
+        GOGGLES_TRY(load_preset_textures(vk_ctx, texture_loader, *preset_result));
+
+    if (session != nullptr) {
+        update_identity_field(*session, [&](diagnostics::SessionIdentity* identity) {
+            identity->expanded_source_hash = fnv1a_hash(expanded_source_material);
+            identity->compiled_contract_hash = fnv1a_hash(compiled_contract_material);
+        });
+        emit_authoring_verdict(*session, verdict);
+    }
+
+    std::string source_display = resolved.provenance.source_name.empty()
+                                     ? std::string("<memory>")
+                                     : resolved.provenance.source_name;
+    GOGGLES_LOG_INFO(
+        "FilterChain loaded preset: {} ({} passes, {} textures, {} aliases, {} params)",
+        source_display, new_passes.size(), texture_registry.size(), new_alias_map.size(),
+        preset_result->parameters.size());
     for (const auto& [alias, pass_idx] : new_alias_map) {
         GOGGLES_LOG_DEBUG("  Alias '{}' -> pass {}", alias, pass_idx);
     }

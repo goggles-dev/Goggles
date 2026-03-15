@@ -1,5 +1,6 @@
 #include "preset_parser.hpp"
 
+#include "runtime/source_resolver.hpp"
 #include "support/logging.hpp"
 #include "support/profiling.hpp"
 
@@ -387,6 +388,68 @@ auto PresetParser::parse_format(bool is_float, bool is_srgb) -> vk::Format {
 
 auto PresetParser::parse_wrap_mode(const std::string& value) -> WrapMode {
     return parse_wrap_mode_value(value);
+}
+
+auto PresetParser::load(const filter_chain::runtime::ResolvedSource& resolved,
+                        filter_chain::runtime::SourceResolver& resolver,
+                        const goggles_fc_import_callbacks_t* import_callbacks)
+    -> Result<PresetConfig> {
+    GOGGLES_PROFILE_FUNCTION();
+
+    std::string content(resolved.bytes.begin(), resolved.bytes.end());
+    std::vector<std::string> visited_names;
+    if (!resolved.provenance.source_name.empty()) {
+        visited_names.push_back(resolved.provenance.source_name);
+    }
+
+    return load_recursive_resolved(content, resolved.base_path, 0, visited_names, resolver,
+                                   import_callbacks);
+}
+
+auto PresetParser::load_recursive_resolved(const std::string& content,
+                                           const std::filesystem::path& base_path, int depth,
+                                           std::vector<std::string>& visited_names,
+                                           filter_chain::runtime::SourceResolver& resolver,
+                                           const goggles_fc_import_callbacks_t* import_callbacks)
+    -> Result<PresetConfig> {
+    if (depth > MAX_REFERENCE_DEPTH) {
+        return make_error<PresetConfig>(
+            ErrorCode::parse_error,
+            std::format("Reference depth exceeded (max {})", MAX_REFERENCE_DEPTH));
+    }
+
+    auto ref_path = parse_reference(content);
+    if (ref_path) {
+        // Check for circular references using source name.
+        for (const auto& v : visited_names) {
+            if (v == *ref_path) {
+                return make_error<PresetConfig>(ErrorCode::parse_error,
+                                                "Circular reference detected: " + *ref_path);
+            }
+        }
+        visited_names.push_back(*ref_path);
+
+        // Resolve the referenced file through the resolver.
+        auto ref_bytes_result = resolver.resolve_relative(base_path, *ref_path, import_callbacks);
+        if (!ref_bytes_result) {
+            return make_error<PresetConfig>(ref_bytes_result.error().code,
+                                            ref_bytes_result.error().message);
+        }
+
+        std::string ref_content(ref_bytes_result.value().begin(), ref_bytes_result.value().end());
+
+        // Compute new base path for the referenced preset.
+        auto ref_base = base_path / std::filesystem::path(*ref_path).parent_path();
+        if (!ref_base.empty()) {
+            ref_base = std::filesystem::weakly_canonical(ref_base);
+        }
+
+        GOGGLES_LOG_DEBUG("Following #reference via resolver: {}", *ref_path);
+        return load_recursive_resolved(ref_content, ref_base, depth + 1, visited_names, resolver,
+                                       import_callbacks);
+    }
+
+    return parse_ini(content, base_path);
 }
 
 } // namespace goggles::render
