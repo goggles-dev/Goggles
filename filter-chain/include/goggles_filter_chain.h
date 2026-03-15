@@ -278,6 +278,17 @@ typedef struct GogglesFcImportCallbacks goggles_fc_import_callbacks_t;
 
 /* ── POD structs: preset source descriptor ───────────────────────────────── */
 
+/**
+ * @brief Preset source descriptor for loading filter presets.
+ *
+ * When @c kind is @c GOGGLES_FC_PRESET_SOURCE_FILE:
+ *   - @c path.data non-null with @c path.size > 0: loads the preset from the
+ *     filesystem path given by @c path.
+ *   - @c path.data non-null with @c path.size == 0: passthrough mode. No preset
+ *     file is loaded; the runtime creates a built-in single-pass blit pipeline
+ *     that copies the source image to the target without applying any filters.
+ *   - @c path.data null: rejected with @c GOGGLES_FC_STATUS_INVALID_ARGUMENT.
+ */
 struct GogglesFcPresetSource {
     uint32_t struct_size;
     goggles_fc_preset_source_kind_t kind;

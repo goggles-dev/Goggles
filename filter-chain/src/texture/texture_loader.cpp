@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <limits>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "support/logging.hpp"
@@ -70,6 +71,11 @@ auto TextureLoader::load_from_file(const std::filesystem::path& path,
 auto TextureLoader::load_from_bytes(const uint8_t* data, size_t size, const std::string& label,
                                     const TextureLoadConfig& config) -> Result<TextureData> {
     GOGGLES_PROFILE_FUNCTION();
+
+    if (size > static_cast<size_t>(std::numeric_limits<int>::max())) {
+        return make_error<TextureData>(ErrorCode::invalid_data,
+                                       "Texture data too large for stbi: " + label);
+    }
 
     int width = 0;
     int height = 0;

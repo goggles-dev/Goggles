@@ -8,9 +8,6 @@ include("${CMAKE_CURRENT_LIST_DIR}/GogglesFilterChainTargets.cmake")
 # No public asset-directory path is exported or required.
 
 if(@FILTER_CHAIN_LIBRARY_TYPE_IS_STATIC@)
-    set(_goggles_filter_chain_cxx_runtime_libraries
-        "@FILTER_CHAIN_CXX_IMPLICIT_LINK_LIBRARIES@")
-
     find_library(GOGGLES_FILTER_CHAIN_PRIVATE_SPDLOG_LIBRARY
         NAMES spdlog libspdlog
         HINTS "$ENV{CONDA_PREFIX}/lib")
@@ -49,17 +46,9 @@ if(@FILTER_CHAIN_LIBRARY_TYPE_IS_STATIC@)
         _goggles_filter_chain_link_libraries
         "${_goggles_filter_chain_link_libraries}")
 
-    foreach(_goggles_filter_chain_runtime_library IN LISTS _goggles_filter_chain_cxx_runtime_libraries)
-        if(NOT _goggles_filter_chain_runtime_library STREQUAL "")
-            list(APPEND _goggles_filter_chain_link_libraries
-                "$<LINK_ONLY:${_goggles_filter_chain_runtime_library}>")
-        endif()
-    endforeach()
     list(REMOVE_DUPLICATES _goggles_filter_chain_link_libraries)
 
     set_target_properties(GogglesFilterChain::goggles-filter-chain PROPERTIES
         INTERFACE_LINK_LIBRARIES "${_goggles_filter_chain_link_libraries}")
-    unset(_goggles_filter_chain_cxx_runtime_libraries)
-    unset(_goggles_filter_chain_runtime_library)
     unset(_goggles_filter_chain_link_libraries)
 endif()

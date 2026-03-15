@@ -224,10 +224,13 @@ validate_vk_device_create_info(const goggles_fc_vk_device_create_info_t* info)
     }
 
     if (source->kind == GOGGLES_FC_PRESET_SOURCE_FILE) {
-        // File sources accept:
-        //   - Non-null data with size > 0: normal file path
-        //   - Non-null data with size == 0: passthrough (empty path → built-in blit pipeline)
-        // Null data is always rejected.
+        // File sources accept two valid forms:
+        //   1. path.data != nullptr && path.size > 0  → filesystem preset path (must be valid
+        //   UTF-8)
+        //   2. path.data != nullptr && path.size == 0  → passthrough sentinel: no preset is loaded;
+        //      SourceResolver returns empty bytes, and ChainBuilder creates a single-pass blit
+        //      pipeline. Used by load_passthrough_into_slot() and tested in contract tests.
+        // path.data == nullptr is always rejected regardless of size.
         if (source->path.data == nullptr) {
             return GOGGLES_FC_STATUS_INVALID_ARGUMENT;
         }
