@@ -11,8 +11,6 @@
 #include <functional>
 #include <goggles/filter_chain/filter_controls.hpp>
 #include <goggles/filter_chain/scale_mode.hpp>
-#include <optional>
-#include <util/config.hpp>
 #include <util/external_image.hpp>
 #include <vector>
 
@@ -26,7 +24,6 @@ struct RenderSettings {
     std::string gpu_selector;
     uint32_t source_width = 0;
     uint32_t source_height = 0;
-    std::optional<Config::Diagnostics> diagnostics;
 };
 
 struct FilterChainStagePolicy {
@@ -168,8 +165,6 @@ private:
     backend_internal::FilterChainController m_filter_chain_controller;
 
     std::filesystem::path m_cache_dir;
-    std::optional<Config::Diagnostics> m_diagnostics_config;
-
     uint32_t m_integer_scale = 0;
     ScaleMode m_scale_mode = ScaleMode::stretch;
 

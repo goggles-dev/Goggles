@@ -172,11 +172,11 @@ The diagnostics system SHALL support a library-internal policy configuration tha
 - AND the fallback SHALL proceed and the pass SHALL execute with the substituted resource
 - AND the substitution SHALL be recorded in the degradation ledger
 
-#### Scenario: Configuration via TOML
-- GIVEN a Goggles configuration file with a `[diagnostics]` section
+#### Scenario: Host boundary does not advertise diagnostics policy configuration
+- GIVEN a Goggles host integrates through the current filter-chain boundary
 - WHEN the application initializes
-- THEN the diagnostics system SHALL read capture mode, strict/compatibility toggle, and retention policy from the configuration
-- AND missing configuration keys SHALL fall back to documented defaults
+- THEN the host SHALL NOT expose a user-facing `[diagnostics]` policy surface that implies runtime policy control
+- AND any diagnostics behavior beyond passive summary retrieval SHALL remain internal to the library
 
 #### Scenario: Concrete policy shape remains internal
 - GIVEN the runtime diagnostics policy is derived from host configuration and library defaults
@@ -191,12 +191,11 @@ The diagnostics system SHALL support a library-internal policy configuration tha
 - **THEN** the library SHALL keep policy fields and policy object layout internal
 - **AND** the public diagnostics contract SHALL remain limited to summary retrieval via `get_diagnostic_summary()`
 
-#### Scenario: TOML mapping responsibility stays with host
+#### Scenario: Host does not translate TOML diagnostics policy into runtime control
 
-- **GIVEN** Goggles configuration contains a `[diagnostics]` TOML section
-- **WHEN** the application initializes diagnostic policy
-- **THEN** the host application code SHALL parse TOML keys (`mode`, `strict`, `tier`,
-  `capture_frame_limit`, `retention_bytes`) and supply any resulting configuration through library-internal integration paths
+- **GIVEN** the Goggles application loads its TOML configuration
+- **WHEN** it initializes filter-chain integration
+- **THEN** no `[diagnostics]` TOML keys SHALL be required or interpreted as runtime policy controls
 - **AND** the standalone library SHALL NOT import or link TOML parsing libraries
 
 ### Requirement: Reporting Modes
@@ -425,10 +424,10 @@ SHALL build as part of the standalone filter-chain project without linking or de
 - **AND** no header SHALL include Goggles `util/config.hpp`, `util/job_system.hpp`, or other
   `goggles_util`-owned types
 
-### Requirement: TOML-Based Policy Configuration Is Host-Side
+### Requirement: Host Boundary Does Not Expose Diagnostics Policy Configuration
 
-TOML-based diagnostic policy configuration (reading `[diagnostics]` sections from `goggles.toml`)
-SHALL remain a host-side concern owned by the Goggles application. The standalone diagnostics
+The Goggles host boundary SHALL not expose TOML-based diagnostics policy configuration or other
+user-facing controls that imply caller ownership of diagnostics policy. The standalone diagnostics
 library SHALL NOT read TOML configuration files directly, and the public boundary SHALL NOT expose
 policy-setting or diagnostic-session-creation API parameters.
 
@@ -439,11 +438,11 @@ policy-setting or diagnostic-session-creation API parameters.
 - **THEN** the library SHALL use internal policy state rather than public boundary API parameters
 - **AND** the library SHALL NOT read TOML configuration files or depend on `toml11` for policy resolution
 
-#### Scenario: Goggles host maps TOML config into internal integration
+#### Scenario: Goggles host keeps diagnostics configuration out of runtime config
 
-- **GIVEN** the Goggles application reads `[diagnostics]` from its TOML configuration
+- **GIVEN** the Goggles application reads its TOML configuration
 - **WHEN** it initializes filter-chain diagnostics behavior
-- **THEN** the host SHALL translate TOML configuration values into internal library integration state
+- **THEN** the host SHALL limit caller-visible diagnostics behavior to passive summary retrieval
 - **AND** the TOML parsing dependency SHALL remain in the Goggles host, not in the standalone library
 
 ### Requirement: Diagnostic Test Ownership Transfer

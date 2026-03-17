@@ -8,7 +8,6 @@
 #include <goggles/filter_chain.h>
 #include <goggles/filter_chain.hpp>
 #include <goggles/filter_chain/filter_controls.hpp>
-#include <util/config.hpp>
 #include <vector>
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan.hpp>
@@ -55,7 +54,6 @@ struct FilterChainController {
     struct AdapterBuildConfig {
         VulkanDeviceInfo device_info;
         ChainConfig chain_config;
-        std::optional<Config::Diagnostics> diagnostics;
     };
 
     struct OutputTarget {

@@ -487,26 +487,6 @@ auto align_adapter_output(FilterChainController::FilterChainSlot& slot,
     return {};
 }
 
-void apply_diagnostics_policy(FilterChainController::FilterChainSlot& slot,
-                              const std::optional<Config::Diagnostics>& diagnostics) {
-    if (!diagnostics || !diagnostics->configured || !slot.chain) {
-        return;
-    }
-
-    auto summary_result = slot.chain.get_diagnostic_summary();
-    if (!summary_result) {
-        GOGGLES_LOG_WARN("Failed to query filter-chain diagnostic summary: {}",
-                         summary_result.error().message);
-        return;
-    }
-
-    const auto& summary = summary_result.value();
-    GOGGLES_LOG_DEBUG(
-        "Filter-chain diagnostic summary: frame={} total={} info={} warnings={} errors={}",
-        summary.current_frame, summary.total_events, summary.info_count, summary.warning_count,
-        summary.error_count);
-}
-
 auto create_and_load_slot(const FilterChainController::AdapterBuildConfig& config,
                           const std::filesystem::path& preset_path)
     -> Result<FilterChainController::FilterChainSlot> {
@@ -518,8 +498,6 @@ auto create_and_load_slot(const FilterChainController::AdapterBuildConfig& confi
     } else {
         GOGGLES_TRY(load_preset_into_slot(new_slot, preset_path, config.chain_config));
     }
-
-    apply_diagnostics_policy(new_slot, config.diagnostics);
 
     return std::move(new_slot);
 }

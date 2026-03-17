@@ -69,7 +69,6 @@ void VulkanBackend::initialize_paths(const std::filesystem::path& cache_dir) {
 void VulkanBackend::initialize_settings(const RenderSettings& settings) {
     m_scale_mode = settings.scale_mode;
     m_integer_scale = settings.integer_scale;
-    m_diagnostics_config = settings.diagnostics;
     update_target_fps(settings.target_fps);
     m_filter_chain_controller.set_prechain_resolution(
         backend_internal::FilterChainController::PrechainResolutionConfig{
@@ -616,7 +615,6 @@ auto VulkanBackend::make_filter_chain_build_config() const
                 .initial_prechain_height =
                     m_filter_chain_controller.current_prechain_resolution().height,
             },
-        .diagnostics = m_diagnostics_config,
     };
 }
 
