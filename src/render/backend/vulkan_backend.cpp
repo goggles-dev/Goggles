@@ -252,33 +252,6 @@ void VulkanBackend::set_prechain_resolution(uint32_t width, uint32_t height) {
         [this]() { wait_all_frames(); });
 }
 
-auto VulkanBackend::get_prechain_resolution() const -> vk::Extent2D {
-    return m_filter_chain_controller.current_prechain_resolution();
-}
-
-auto VulkanBackend::list_filter_controls() const
-    -> std::vector<goggles::fc::FilterControlDescriptor> {
-    return m_filter_chain_controller.list_filter_controls();
-}
-
-auto VulkanBackend::list_filter_controls(goggles::fc::FilterControlStage stage) const
-    -> std::vector<goggles::fc::FilterControlDescriptor> {
-    return m_filter_chain_controller.list_filter_controls(stage);
-}
-
-auto VulkanBackend::set_filter_control_value(goggles::fc::FilterControlId control_id, float value)
-    -> bool {
-    return m_filter_chain_controller.set_filter_control_value(control_id, value);
-}
-
-auto VulkanBackend::reset_filter_control_value(goggles::fc::FilterControlId control_id) -> bool {
-    return m_filter_chain_controller.reset_filter_control_value(control_id);
-}
-
-void VulkanBackend::reset_filter_controls() {
-    m_filter_chain_controller.reset_filter_controls();
-}
-
 auto VulkanBackend::record_render_commands(vk::CommandBuffer cmd, uint32_t image_index,
                                            const UiRenderCallback& ui_callback) -> Result<void> {
     GOGGLES_PROFILE_SCOPE("RecordCommands");

@@ -53,10 +53,6 @@ public:
     void load_shader_preset(const std::filesystem::path& preset_path);
     [[nodiscard]] auto reload_shader_preset(const std::filesystem::path& preset_path)
         -> Result<void>;
-    [[nodiscard]] auto current_preset_path() const -> const std::filesystem::path& {
-        return m_filter_chain_controller.current_preset_path();
-    }
-
     void set_filter_chain_policy(const FilterChainStagePolicy& policy);
 
     using UiRenderCallback = std::function<void(vk::CommandBuffer, vk::ImageView, vk::Extent2D)>;
@@ -74,53 +70,30 @@ public:
         -> Result<void>;
     void wait_all_frames();
 
-    [[nodiscard]] auto instance() const -> vk::Instance { return m_vulkan_context.instance; }
-    [[nodiscard]] auto physical_device() const -> vk::PhysicalDevice {
-        return m_vulkan_context.physical_device;
-    }
-    [[nodiscard]] auto device() const -> vk::Device { return m_vulkan_context.device; }
-    [[nodiscard]] auto graphics_queue() const -> vk::Queue {
-        return m_vulkan_context.graphics_queue;
-    }
-    [[nodiscard]] auto graphics_queue_family() const -> uint32_t {
-        return m_vulkan_context.graphics_queue_family;
-    }
-    [[nodiscard]] auto swapchain_format() const -> vk::Format {
-        return m_render_output.swapchain_format;
-    }
-    [[nodiscard]] auto swapchain_extent() const -> vk::Extent2D {
-        return m_render_output.swapchain_extent;
-    }
-    [[nodiscard]] auto swapchain_image_count() const -> uint32_t {
-        return m_render_output.image_count();
-    }
-    [[nodiscard]] auto get_prechain_resolution() const -> vk::Extent2D;
     void set_prechain_resolution(uint32_t width, uint32_t height);
 
-    [[nodiscard]] auto list_filter_controls() const
-        -> std::vector<goggles::fc::FilterControlDescriptor>;
-    [[nodiscard]] auto list_filter_controls(goggles::fc::FilterControlStage stage) const
-        -> std::vector<goggles::fc::FilterControlDescriptor>;
-    [[nodiscard]] auto set_filter_control_value(goggles::fc::FilterControlId control_id,
-                                                float value) -> bool;
-    [[nodiscard]] auto reset_filter_control_value(goggles::fc::FilterControlId control_id) -> bool;
-    void reset_filter_controls();
-
-    [[nodiscard]] auto get_captured_extent() const -> vk::Extent2D {
-        return m_external_frame_importer.import_extent;
+    [[nodiscard]] auto vulkan_context() const -> const backend_internal::VulkanContext& {
+        return m_vulkan_context;
     }
-    [[nodiscard]] auto target_fps() const -> uint32_t { return m_render_output.target_fps; }
+    [[nodiscard]] auto render_output() const -> const backend_internal::RenderOutput& {
+        return m_render_output;
+    }
+    [[nodiscard]] auto frame_importer() const -> const backend_internal::ExternalFrameImporter& {
+        return m_external_frame_importer;
+    }
+    [[nodiscard]] auto filter_chain_controller() -> backend_internal::FilterChainController& {
+        return m_filter_chain_controller;
+    }
+    [[nodiscard]] auto filter_chain_controller() const
+        -> const backend_internal::FilterChainController& {
+        return m_filter_chain_controller;
+    }
+
     [[nodiscard]] auto get_scale_mode() const -> ScaleMode { return m_scale_mode; }
     [[nodiscard]] auto get_integer_scale() const -> uint32_t { return m_integer_scale; }
     void set_target_fps(uint32_t target_fps) { update_target_fps(target_fps); }
     void set_scale_mode(ScaleMode mode) { m_scale_mode = mode; }
     void set_integer_scale(uint32_t scale) { m_integer_scale = scale; }
-    [[nodiscard]] auto gpu_index() const -> uint32_t { return m_vulkan_context.gpu_index; }
-    [[nodiscard]] auto gpu_uuid() const -> const std::string& { return m_vulkan_context.gpu_uuid; }
-
-    [[nodiscard]] auto consume_chain_swapped() -> bool {
-        return m_filter_chain_controller.consume_chain_swapped();
-    }
 
 private:
     VulkanBackend() = default;
