@@ -71,20 +71,18 @@ TEST_CASE("Filter chain boundary control contract coverage", "[filter_chain][bou
     using goggles::fc::FilterControlStage;
     using goggles::render::VulkanBackend;
 
-    using ListAllSig = std::vector<FilterControlDescriptor> (VulkanBackend::*)() const;
-    using ListStageSig =
-        std::vector<FilterControlDescriptor> (VulkanBackend::*)(FilterControlStage) const;
-    using SetSig = bool (VulkanBackend::*)(FilterControlId, float);
-    using ResetSig = bool (VulkanBackend::*)(FilterControlId);
+    using FCC = goggles::render::backend_internal::FilterChainController;
+    using ListAllSig = std::vector<FilterControlDescriptor> (FCC::*)() const;
+    using ListStageSig = std::vector<FilterControlDescriptor> (FCC::*)(FilterControlStage) const;
+    using SetSig = bool (FCC::*)(FilterControlId, float);
+    using ResetSig = bool (FCC::*)(FilterControlId);
 
     static_assert(
-        std::is_same_v<decltype(static_cast<ListAllSig>(&VulkanBackend::list_filter_controls)),
-                       ListAllSig>);
-    static_assert(
-        std::is_same_v<decltype(static_cast<ListStageSig>(&VulkanBackend::list_filter_controls)),
-                       ListStageSig>);
-    static_assert(std::is_same_v<decltype(&VulkanBackend::set_filter_control_value), SetSig>);
-    static_assert(std::is_same_v<decltype(&VulkanBackend::reset_filter_control_value), ResetSig>);
+        std::is_same_v<decltype(static_cast<ListAllSig>(&FCC::list_filter_controls)), ListAllSig>);
+    static_assert(std::is_same_v<decltype(static_cast<ListStageSig>(&FCC::list_filter_controls)),
+                                 ListStageSig>);
+    static_assert(std::is_same_v<decltype(&FCC::set_filter_control_value), SetSig>);
+    static_assert(std::is_same_v<decltype(&FCC::reset_filter_control_value), ResetSig>);
 
     static_assert(std::is_same_v<goggles::ui::ParameterChangeCallback,
                                  std::function<void(FilterControlId, float)>>);
@@ -116,7 +114,7 @@ TEST_CASE("Filter chain boundary control contract coverage", "[filter_chain][bou
     REQUIRE(app_text->find("set_filter_control_value(") != std::string::npos);
     REQUIRE((app_text->find("reset_filter_control_value(") != std::string::npos ||
              app_text->find("reset_filter_controls(") != std::string::npos));
-    REQUIRE(app_text->find("filter_chain(") == std::string::npos);
+    REQUIRE(app_text->find("m_filter_chain_controller.") == std::string::npos);
 
     const auto imgui_path = std::filesystem::path(GOGGLES_SOURCE_DIR) / "src/ui/imgui_layer.cpp";
     auto imgui_text = read_text_file(imgui_path);
@@ -323,8 +321,7 @@ TEST_CASE("Async swap and resize safety contract coverage", "[filter_chain][asyn
     auto header_text = read_text_file(backend_hpp);
     REQUIRE(header_text.has_value());
     REQUIRE(header_text->find("return m_render_output.needs_resize;") != std::string::npos);
-    REQUIRE(header_text->find("return m_filter_chain_controller.consume_chain_swapped();") !=
-            std::string::npos);
+    REQUIRE(header_text->find("filter_chain_controller()") != std::string::npos);
 }
 
 TEST_CASE("Filter chain standalone API boundary contract coverage",

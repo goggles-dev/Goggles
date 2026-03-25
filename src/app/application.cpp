@@ -49,7 +49,8 @@ static auto scan_presets(const std::filesystem::path& dir) -> std::vector<std::f
 
 static void update_ui_parameters(render::VulkanBackend& vulkan_backend,
                                  ui::ImGuiLayer& imgui_layer) {
-    auto controls = vulkan_backend.list_filter_controls(goggles::fc::FilterControlStage::effect);
+    auto controls = vulkan_backend.filter_chain_controller().list_filter_controls(
+        goggles::fc::FilterControlStage::effect);
     std::vector<ui::ParameterState> ui_params;
     ui_params.reserve(controls.size());
 
@@ -115,13 +116,13 @@ auto Application::init_vulkan_backend(const Config& config, const util::AppDirs&
 
 auto Application::init_imgui_layer(const util::AppDirs& app_dirs) -> Result<void> {
     ui::ImGuiConfig imgui_config{
-        .instance = m_vulkan_backend->instance(),
-        .physical_device = m_vulkan_backend->physical_device(),
-        .device = m_vulkan_backend->device(),
-        .queue_family = m_vulkan_backend->graphics_queue_family(),
-        .queue = m_vulkan_backend->graphics_queue(),
-        .swapchain_format = m_vulkan_backend->swapchain_format(),
-        .image_count = m_vulkan_backend->swapchain_image_count(),
+        .instance = m_vulkan_backend->vulkan_context().instance,
+        .physical_device = m_vulkan_backend->vulkan_context().physical_device,
+        .device = m_vulkan_backend->vulkan_context().device,
+        .queue_family = m_vulkan_backend->vulkan_context().graphics_queue_family,
+        .queue = m_vulkan_backend->vulkan_context().graphics_queue,
+        .swapchain_format = m_vulkan_backend->render_output().swapchain_format,
+        .image_count = m_vulkan_backend->render_output().image_count(),
     };
 
     m_imgui_layer = GOGGLES_MUST(ui::ImGuiLayer::create(m_window, imgui_config, app_dirs));
@@ -142,16 +143,18 @@ auto Application::init_shader_system(const Config& config, const util::AppDirs& 
     GOGGLES_LOG_INFO("Preset catalog directory: {}", preset_dir.string());
 
     m_imgui_layer->set_preset_catalog(scan_presets(preset_dir));
-    m_imgui_layer->set_current_preset(m_vulkan_backend->current_preset_path());
+    m_imgui_layer->set_current_preset(
+        m_vulkan_backend->filter_chain_controller().current_preset_path());
     m_imgui_layer->state().shader_enabled = !config.shader.preset.empty();
 
     m_imgui_layer->set_parameter_change_callback(
         [&backend = *m_vulkan_backend](goggles::fc::FilterControlId control_id, float value) {
-            static_cast<void>(backend.set_filter_control_value(control_id, value));
+            static_cast<void>(
+                backend.filter_chain_controller().set_filter_control_value(control_id, value));
         });
     m_imgui_layer->set_parameter_reset_callback(
         [&backend = *m_vulkan_backend, layer = m_imgui_layer.get()]() {
-            backend.reset_filter_controls();
+            backend.filter_chain_controller().reset_filter_controls();
             update_ui_parameters(backend, *layer);
         });
     m_imgui_layer->set_prechain_change_callback(
@@ -160,18 +163,20 @@ auto Application::init_shader_system(const Config& config, const util::AppDirs& 
         });
     m_imgui_layer->set_prechain_parameter_callback(
         [&backend = *m_vulkan_backend](goggles::fc::FilterControlId control_id, float value) {
-            static_cast<void>(backend.set_filter_control_value(control_id, value));
+            static_cast<void>(
+                backend.filter_chain_controller().set_filter_control_value(control_id, value));
         });
     m_imgui_layer->set_prechain_scale_mode_callback([this](ScaleMode mode, uint32_t integer_scale) {
         m_vulkan_backend->set_scale_mode(mode);
         m_vulkan_backend->set_integer_scale(integer_scale);
     });
 
-    auto prechain_res = m_vulkan_backend->get_prechain_resolution();
+    auto prechain_res = m_vulkan_backend->filter_chain_controller().current_prechain_resolution();
     m_imgui_layer->set_prechain_state(prechain_res, m_vulkan_backend->get_scale_mode(),
                                       m_vulkan_backend->get_integer_scale());
     m_imgui_layer->set_prechain_parameters(
-        m_vulkan_backend->list_filter_controls(goggles::fc::FilterControlStage::prechain));
+        m_vulkan_backend->filter_chain_controller().list_filter_controls(
+            goggles::fc::FilterControlStage::prechain));
 
     update_ui_parameters(*m_vulkan_backend, *m_imgui_layer);
     return Result<void>{};
@@ -475,7 +480,7 @@ void Application::forward_input_event(const SDL_Event& event) {
 void Application::sync_prechain_ui() {
     auto& prechain = m_imgui_layer->state().prechain;
     if (prechain.target_width == 0 && prechain.target_height == 0) {
-        const auto initial_resolution = m_vulkan_backend->get_captured_extent();
+        const auto initial_resolution = m_vulkan_backend->frame_importer().import_extent;
         if (initial_resolution.width > 0 && initial_resolution.height > 0) {
             m_imgui_layer->set_prechain_state(initial_resolution,
                                               m_vulkan_backend->get_scale_mode(),
@@ -486,8 +491,8 @@ void Application::sync_prechain_ui() {
     }
 
     if (prechain.pass_parameters.empty()) {
-        auto params =
-            m_vulkan_backend->list_filter_controls(goggles::fc::FilterControlStage::prechain);
+        auto params = m_vulkan_backend->filter_chain_controller().list_filter_controls(
+            goggles::fc::FilterControlStage::prechain);
         if (!params.empty()) {
             m_imgui_layer->set_prechain_parameters(std::move(params));
         }
@@ -594,7 +599,7 @@ void Application::request_surface_resize(uint32_t surface_id, bool maximize) {
         return;
     }
 
-    auto extent = m_vulkan_backend->swapchain_extent();
+    auto extent = m_vulkan_backend->render_output().swapchain_extent;
     if (extent.width == 0 || extent.height == 0) {
         return;
     }
@@ -673,7 +678,8 @@ void Application::handle_swapchain_changes() {
                                                            static_cast<uint32_t>(height), fmt);
         if (result) {
             if (fmt != vk::Format::eUndefined) {
-                m_imgui_layer->rebuild_for_format(m_vulkan_backend->swapchain_format());
+                m_imgui_layer->rebuild_for_format(
+                    m_vulkan_backend->render_output().swapchain_format);
             }
         } else {
             GOGGLES_LOG_ERROR("Swapchain rebuild failed: {}", result.error().message);
@@ -698,7 +704,7 @@ void Application::update_frame_sources() {
         if (m_surface_frame->image.format != vk::Format::eUndefined) {
             auto target_format =
                 render::VulkanBackend::get_matching_swapchain_format(m_surface_frame->image.format);
-            if (target_format != m_vulkan_backend->swapchain_format()) {
+            if (target_format != m_vulkan_backend->render_output().swapchain_format) {
                 m_pending_format = static_cast<uint32_t>(m_surface_frame->image.format);
                 m_skip_frame = true;
             }
@@ -734,11 +740,13 @@ void Application::sync_ui_state() {
 
     sync_prechain_ui();
 
-    if (m_vulkan_backend->consume_chain_swapped()) {
-        m_imgui_layer->state().current_preset = m_vulkan_backend->current_preset_path();
+    if (m_vulkan_backend->filter_chain_controller().consume_chain_swapped()) {
+        m_imgui_layer->state().current_preset =
+            m_vulkan_backend->filter_chain_controller().current_preset_path();
         update_ui_parameters(*m_vulkan_backend, *m_imgui_layer);
         m_imgui_layer->set_prechain_parameters(
-            m_vulkan_backend->list_filter_controls(goggles::fc::FilterControlStage::prechain));
+            m_vulkan_backend->filter_chain_controller().list_filter_controls(
+                goggles::fc::FilterControlStage::prechain));
     }
 
     m_imgui_layer->begin_frame();
@@ -822,11 +830,11 @@ void Application::set_target_fps(uint32_t target_fps) {
 }
 
 auto Application::gpu_index() const -> uint32_t {
-    return m_vulkan_backend->gpu_index();
+    return m_vulkan_backend->vulkan_context().gpu_index;
 }
 
 auto Application::gpu_uuid() const -> std::string {
-    return m_vulkan_backend->gpu_uuid();
+    return m_vulkan_backend->vulkan_context().gpu_uuid;
 }
 
 void Application::update_pointer_lock_mirror() {
